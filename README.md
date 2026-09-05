@@ -1,4 +1,4 @@
-# Party Player - pan1k.de
+# Party Player
 
 Ein schlanker MP3/FLAC-Party-Player in reinem PHP - laeuft auf jedem
 Shared-Hosting-Paket (Apache + PHP), braucht **kein** Docker/Compose,
