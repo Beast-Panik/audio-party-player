@@ -346,7 +346,13 @@ html.app-sidebar-preload-collapsed .app-shell {
   border-radius: var(--pnk-radius);
   padding: 8px 14px;
 }
-.app-player-bar__meta {
+/* Titel/Interpret und "Als naechstes" stehen in derselben Spalte
+   uebereinander, statt "Als naechstes" ans Ende des Fortschrittbalkens
+   zu haengen. */
+.app-player-bar__info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
   min-width: 160px;
   max-width: 280px;
 }
@@ -364,14 +370,24 @@ html.app-sidebar-preload-collapsed .app-shell {
 }
 .app-player-bar__progress input[type="range"] { flex: 1; }
 .app-player-bar__next {
-  min-width: 140px;
-  max-width: 240px;
   font-size: 12.5px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .app-player-bar__next #np-next { font-weight: 600; }
+
+/* Restlaufzeit-Anzeige zaehlt runter (siehe app.js) und blinkt, sobald
+   die verbleibende Zeit die Crossfade-Dauer erreicht. */
+@keyframes app-countdown-blink {
+  0%, 49% { opacity: 1; }
+  50%, 100% { opacity: 0.3; }
+}
+#np-duration.is-ending-soon {
+  color: var(--pnk-accent-warm);
+  font-weight: 700;
+  animation: app-countdown-blink 1s step-start infinite;
+}
 
 /* Sidebar: Ueberschriften, Badge auf dem Player-Menuepunkt, Einklapp-Button
    und der PIN-Sperre-Button ganz unten. */
@@ -493,6 +509,29 @@ html.app-sidebar-preload-collapsed .app-sidebar-version {
   position: relative;
   z-index: 1;
 }
+/* Grosse, zentrierte Restlaufzeit ueber dem Fortschrittsbalken des
+   laufenden Tracks (per JS befuellt, siehe updateCurrentPlaylistProgress
+   in app.js). Niedrige Deckkraft und "hinter" dem echten Zeileninhalt im
+   DOM (siehe renderPlaylist), damit Titel/Buttons lesbar bleiben. Blinkt,
+   sobald die Restzeit die Crossfade-Dauer erreicht. */
+.app-playlist-item__countdown {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--pnk-font-mono);
+  font-size: 34px;
+  font-weight: 700;
+  color: var(--pnk-text);
+  opacity: 0.14;
+  pointer-events: none;
+}
+.app-playlist-item__countdown.is-ending-soon {
+  color: var(--pnk-accent-warm);
+  opacity: 0.9;
+  animation: app-countdown-blink 1s step-start infinite;
+}
 .app-playlist-item[draggable="true"] {
   cursor: grab;
 }
@@ -567,8 +606,7 @@ html.app-sidebar-preload-collapsed .app-sidebar-version {
     z-index: 1999;
   }
   .app-countdown { font-size: 20px; }
-  .app-player-bar__meta,
-  .app-player-bar__next { max-width: none; }
+  .app-player-bar__info { max-width: none; }
   .app-track-row {
     grid-template-columns: 1fr 70px;
     grid-template-areas: "title actions" "sub actions";

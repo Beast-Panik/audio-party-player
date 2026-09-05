@@ -16,21 +16,6 @@ require __DIR__ . '/templates/admin_header.php';
   <span class="pnk-badge pnk-badge--accent" id="pending-badge">0 offene Wünsche</span>
 </div>
 
-<div class="pnk-card" style="margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-  <div>
-    <div style="font-weight:600;">Auto-DJ</div>
-    <div class="pnk-text-muted" style="font-size:12.5px; max-width:60ch;">
-      Wenn aktiv: Gast-Wünsche landen direkt in der Playlist (keine manuelle Freigabe
-      noetig), der Player spielt die Playlist automatisch durch und sie wird bei
-      weniger als 3 Songs automatisch mit noch nicht gespielten Tracks aufgefüllt.
-    </div>
-  </div>
-  <label class="pnk-field-row" style="cursor:pointer;">
-    <input class="pnk-checkbox" type="checkbox" id="auto-dj-toggle">
-    <span id="auto-dj-label">Aus</span>
-  </label>
-</div>
-
 <div class="pnk-card" style="margin-bottom:20px;">
   <div class="pnk-card__header">
     <span class="pnk-card__title">Playlist</span>
@@ -45,6 +30,21 @@ require __DIR__ . '/templates/admin_header.php';
     <a class="pnk-btn pnk-btn--ghost pnk-btn--sm" href="<?= app_url('admin/requests.php') ?>">Alle anzeigen</a>
   </div>
   <div id="queue-list"><div class="app-empty">Lade Wünsche…</div></div>
+</div>
+
+<div class="pnk-card" style="margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+  <div>
+    <div style="font-weight:600;">Auto-DJ</div>
+    <div class="pnk-text-muted" style="font-size:12.5px; max-width:60ch;">
+      Wenn aktiv: Gast-Wünsche landen direkt in der Playlist (keine manuelle Freigabe
+      noetig), der Player spielt die Playlist automatisch durch und sie wird bei
+      weniger als 3 Songs automatisch mit noch nicht gespielten Tracks aufgefüllt.
+    </div>
+  </div>
+  <label class="pnk-field-row" style="cursor:pointer;">
+    <input class="pnk-checkbox" type="checkbox" id="auto-dj-toggle">
+    <span id="auto-dj-label">Aus</span>
+  </label>
 </div>
 
 <div class="pnk-card">

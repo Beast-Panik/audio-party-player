@@ -150,6 +150,17 @@
       countdownValue.textContent = formatDuration(activeAudio.duration - activeAudio.currentTime);
     }
 
+    /** Restlaufzeit des aktiven Tracks in Sekunden, oder null wenn (noch) unbekannt. */
+    function remainingSeconds() {
+      if (!activeAudio.duration || isNaN(activeAudio.duration)) return null;
+      return Math.max(0, activeAudio.duration - activeAudio.currentTime);
+    }
+
+    /** Ob die Restlaufzeit die Crossfade-Dauer erreicht hat (fuer die Blink-Anzeigen). */
+    function isEndingSoon(remaining) {
+      return crossfadeEnabled && remaining !== null && remaining <= crossfadeSeconds;
+    }
+
     function findCurrentIndex(items) {
       if (currentTrackId === null) return -1;
       for (var i = 0; i < items.length; i++) {
@@ -297,13 +308,19 @@
       el.addEventListener('loadedmetadata', function (e) {
         if (e.target !== activeAudio || !seek || !durEl) return;
         seek.max = activeAudio.duration || 0;
-        durEl.textContent = formatDuration(activeAudio.duration);
+        durEl.textContent = '-' + formatDuration(activeAudio.duration);
+        durEl.classList.remove('is-ending-soon');
       });
       el.addEventListener('timeupdate', function (e) {
         if (e.target !== activeAudio) return;
         if (!seeking && seek && curEl) {
           seek.value = activeAudio.currentTime;
           curEl.textContent = formatDuration(activeAudio.currentTime);
+        }
+        var remaining = remainingSeconds();
+        if (durEl && remaining !== null) {
+          durEl.textContent = '-' + formatDuration(remaining);
+          durEl.classList.toggle('is-ending-soon', isEndingSoon(remaining));
         }
         updateCurrentPlaylistProgress();
         updateCountdown();
@@ -331,6 +348,12 @@
       if (!row) return;
       var pct = Math.min(100, Math.max(0, (activeAudio.currentTime / activeAudio.duration) * 100));
       row.style.setProperty('--progress', pct + '%');
+      var countdownEl = row.querySelector('.app-playlist-item__countdown');
+      var remaining = remainingSeconds();
+      if (countdownEl && remaining !== null) {
+        countdownEl.textContent = formatDuration(remaining);
+        countdownEl.classList.toggle('is-ending-soon', isEndingSoon(remaining));
+      }
     }
 
     function updateNavBadge(count) {
@@ -397,6 +420,7 @@
         var isCurrent = it.track_id === currentTrackId;
         var isNext = next && next.id === it.id;
         html += '<div class="app-request-item app-playlist-item" draggable="true" data-id="' + it.id + '" data-track-id="' + it.track_id + '">' +
+          '<div class="app-playlist-item__countdown"></div>' +
           '<div>' +
             '<div style="font-weight:600;">' + escapeHtml(it.title || '(ohne Titel)') + (isCurrent ? ' <span class="pnk-text-muted">▶ läuft</span>' : '') + '</div>' +
             '<div class="pnk-text-muted" style="font-size:12px;">' + escapeHtml(it.artist || '') +

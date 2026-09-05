@@ -83,18 +83,20 @@ if (!function_exists('nav_item')) {
       <button class="pnk-btn pnk-btn--primary app-player-btn" id="btn-playpause" title="Play/Pause">▶</button>
       <button class="pnk-btn app-player-btn" id="btn-next" title="Naechster in der Playlist">⏭</button>
     </div>
-    <div class="app-player-bar__meta">
-      <div class="app-player-bar__title" id="np-title">-</div>
-      <div class="app-player-bar__artist" id="np-artist">-</div>
+    <div class="app-player-bar__info">
+      <div class="app-player-bar__meta">
+        <div class="app-player-bar__title" id="np-title">-</div>
+        <div class="app-player-bar__artist" id="np-artist">-</div>
+      </div>
+      <div class="app-player-bar__next">
+        <span class="pnk-text-muted">Als nächstes:</span>
+        <span id="np-next">-</span>
+      </div>
     </div>
     <div class="app-player-bar__progress">
       <span id="np-current">0:00</span>
       <input type="range" id="np-seek" min="0" max="100" value="0" step="0.1">
       <span id="np-duration">0:00</span>
-    </div>
-    <div class="app-player-bar__next">
-      <span class="pnk-text-muted">Als nächstes:</span>
-      <span id="np-next">-</span>
     </div>
   </div>
   <?php endif; ?>
