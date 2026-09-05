@@ -113,7 +113,7 @@ require __DIR__ . '/../templates/admin_header.php';
         <?= Csrf::field() ?>
         <input type="hidden" name="action" value="delete">
         <input type="hidden" name="id" value="<?= (int) $lib['id'] ?>">
-        <button class="pnk-btn pnk-btn--danger pnk-btn--sm" type="submit">Entfernen</button>
+        <button class="pnk-btn pnk-btn--danger" type="submit">Entfernen</button>
       </form>
     </div>
   </div>
