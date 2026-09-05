@@ -908,6 +908,47 @@
   }
 
   /* ================================================================== *
+   * About-Dialog: Klick auf die Versionsnummer im Sidebar-Footer oeffnet
+   * ein Modal mit App-Info und Quellen-/Lizenzhinweisen. Inhalt kommt per
+   * AJAX von api/about.php (nur einmal geladen, dann gecacht), damit die
+   * Versionsnummer nicht doppelt in PHP und JS gepflegt werden muss. Lebt
+   * im Kopfbereich und wird von der Soft-Navigation nie angefasst.
+   * ================================================================== */
+  var aboutBtn = document.getElementById('btn-about');
+  var aboutBackdrop = document.getElementById('about-modal-backdrop');
+  if (aboutBtn && aboutBackdrop) {
+    var aboutBody = document.getElementById('about-modal-body');
+    var aboutCloseBtns = [document.getElementById('about-modal-close'), document.getElementById('about-modal-close-2')];
+    var aboutLoaded = false;
+
+    function closeAbout() { aboutBackdrop.hidden = true; }
+
+    function openAbout() {
+      aboutBackdrop.hidden = false;
+      if (aboutLoaded) return;
+      fetch(api('api/about.php')).then(function (r) { return r.json(); }).then(function (j) {
+        aboutLoaded = true;
+        var sourcesHtml = (j.sources || []).length
+          ? '<ul style="margin:8px 0 0; padding-left:18px;">' + j.sources.map(function (s) {
+              return '<li>' + escapeHtml(s.name) + (s.license ? ' – ' + escapeHtml(s.license) : '') + '</li>';
+            }).join('') + '</ul>'
+          : '<p class="pnk-text-muted" style="margin:8px 0 0; font-size:13px;">' + escapeHtml(j.sources_note || '') + '</p>';
+        aboutBody.innerHTML =
+          '<p style="margin:0 0 4px; font-weight:600;">' + escapeHtml(j.app_name) + '</p>' +
+          '<p class="pnk-text-muted" style="margin:0 0 16px; font-size:12px;">Version ' + escapeHtml(j.version) + '</p>' +
+          '<p style="margin:0; font-size:13px; font-weight:600;">Quellen &amp; Lizenzen</p>' +
+          sourcesHtml;
+      }).catch(function () {
+        aboutBody.innerHTML = '<div class="app-empty">Fehler beim Laden.</div>';
+      });
+    }
+
+    aboutBtn.addEventListener('click', openAbout);
+    aboutCloseBtns.forEach(function (btn) { if (btn) btn.addEventListener('click', closeAbout); });
+    aboutBackdrop.addEventListener('click', function (e) { if (e.target === aboutBackdrop) closeAbout(); });
+  }
+
+  /* ================================================================== *
    * Soft-Navigation: faengt Klicks auf interne Seitenverweise ab und laedt
    * nur den Inhaltsbereich (#app-main) per fetch nach, statt die ganze
    * Seite neu zu laden. Der Kopfbereich mit der Player-Leiste und den

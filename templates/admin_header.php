@@ -128,9 +128,22 @@ if (!function_exists('nav_item')) {
           <span class="app-nav-icon" aria-hidden="true">🔑</span><span class="app-nav-label">PIN einrichten</span>
         </a>
       <?php endif; ?>
-      <div class="app-sidebar-version"><?= htmlspecialchars(APP_VERSION) ?></div>
+      <button class="app-sidebar-version" id="btn-about" type="button" title="Über diese App">v<?= htmlspecialchars(ltrim(APP_VERSION, 'v')) ?></button>
     </div>
     <?php endif; ?>
   </aside>
+
+  <div class="pnk-modal-backdrop" id="about-modal-backdrop" hidden>
+    <div class="pnk-modal" style="width:480px;">
+      <div class="pnk-modal__header">
+        <span class="pnk-card__title">Über diese App</span>
+        <button class="pnk-btn pnk-btn--ghost pnk-btn--icon" id="about-modal-close" type="button" aria-label="Schließen">✕</button>
+      </div>
+      <div id="about-modal-body"><div class="app-empty">Lade…</div></div>
+      <div class="pnk-modal__footer">
+        <button class="pnk-btn" id="about-modal-close-2" type="button">Schließen</button>
+      </div>
+    </div>
+  </div>
 
   <main class="pnk-main app-content" id="app-main" style="grid-area:main;">

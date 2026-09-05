@@ -428,11 +428,22 @@ html.app-sidebar-preload-collapsed .app-shell {
   cursor: pointer;
 }
 .app-sidebar-version {
+  display: block;
+  width: 100%;
   margin-top: var(--pnk-space-3);
-  padding: 0 8px;
+  padding: 4px 8px;
+  font: inherit;
   font-size: 10.5px;
   color: var(--pnk-text-dim);
   text-align: center;
+  background: transparent;
+  border: 0;
+  border-radius: var(--pnk-radius-sm);
+  cursor: pointer;
+}
+.app-sidebar-version:hover {
+  color: var(--pnk-text);
+  background: var(--pnk-hover-bg);
 }
 
 /* Eingeklappt: nur Icons, Labels/Ueberschriften/Badge-Text ausblenden.
