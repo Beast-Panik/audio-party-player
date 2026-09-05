@@ -427,6 +427,13 @@ html.app-sidebar-preload-collapsed .app-shell {
   font: inherit;
   cursor: pointer;
 }
+.app-sidebar-version {
+  margin-top: var(--pnk-space-3);
+  padding: 0 8px;
+  font-size: 10.5px;
+  color: var(--pnk-text-dim);
+  text-align: center;
+}
 
 /* Eingeklappt: nur Icons, Labels/Ueberschriften/Badge-Text ausblenden.
    min-width muss mit ueberschrieben werden - das Designsystem erzwingt
@@ -439,8 +446,10 @@ html.app-sidebar-preload-collapsed .app-sidebar {
 }
 .app-sidebar-is-collapsed .app-nav-label,
 .app-sidebar-is-collapsed .app-sidebar-heading,
+.app-sidebar-is-collapsed .app-sidebar-version,
 html.app-sidebar-preload-collapsed .app-nav-label,
-html.app-sidebar-preload-collapsed .app-sidebar-heading {
+html.app-sidebar-preload-collapsed .app-sidebar-heading,
+html.app-sidebar-preload-collapsed .app-sidebar-version {
   display: none;
 }
 .app-sidebar-is-collapsed .app-sidebar-collapse-toggle {

@@ -128,6 +128,7 @@ if (!function_exists('nav_item')) {
           <span class="app-nav-icon" aria-hidden="true">🔑</span><span class="app-nav-label">PIN einrichten</span>
         </a>
       <?php endif; ?>
+      <div class="app-sidebar-version"><?= htmlspecialchars(APP_VERSION) ?></div>
     </div>
     <?php endif; ?>
   </aside>

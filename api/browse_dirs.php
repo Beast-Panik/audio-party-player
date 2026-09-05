@@ -60,8 +60,18 @@ function withinAllowedRoots(string $path, array $roots): bool
     return false;
 }
 
+/**
+ * Startpunkt fuer den Picker: bevorzugt das App-Wurzelverzeichnis (in dem
+ * index.php liegt) - dort ist der Zugriff garantiert erlaubt, da die App
+ * selbst von dort laeuft. Erst wenn das aus irgendeinem Grund nicht lesbar
+ * ist, wird auf die open_basedir-Wurzeln bzw. "/" zurueckgefallen.
+ */
 function defaultStartPath(array $roots): string
 {
+    $appRoot = realpath(__DIR__ . '/..');
+    if ($appRoot !== false && is_dir($appRoot) && is_readable($appRoot) && withinAllowedRoots($appRoot, $roots)) {
+        return $appRoot;
+    }
     foreach ($roots as $root) {
         if (is_dir($root) && is_readable($root)) {
             return $root;

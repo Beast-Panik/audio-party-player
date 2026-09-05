@@ -13,3 +13,6 @@ data/scanstate/*.json
 .DS_Store
 Thumbs.db
 *.swp
+
+# Lokale Claude-Code-Tooling-Konfiguration (z.B. Dev-Server-Start)
+.claude/
