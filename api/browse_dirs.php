@@ -19,11 +19,63 @@ function json_fail(int $code, string $message): void
     exit;
 }
 
+/**
+ * Erlaubte Wurzelverzeichnisse laut open_basedir (falls vom Hoster gesetzt).
+ * Auf Shared-Hosting ist der PHP-Zugriff meist auf das eigene Home-Verzeichnis
+ * beschraenkt - ohne das zu beruecksichtigen wuerde der Picker beim Start bei
+ * "/" sofort mit "nicht lesbar" fehlschlagen und leer bleiben.
+ *
+ * @return string[]
+ */
+function allowedRoots(): array
+{
+    $raw = ini_get('open_basedir');
+    if ($raw === false || $raw === '') {
+        return [];
+    }
+    $roots = [];
+    foreach (explode(PATH_SEPARATOR, $raw) as $part) {
+        $part = rtrim(trim($part), '/\\');
+        if ($part === '') {
+            continue;
+        }
+        $real = realpath($part);
+        if ($real !== false) {
+            $roots[] = $real;
+        }
+    }
+    return $roots;
+}
+
+function withinAllowedRoots(string $path, array $roots): bool
+{
+    if (!$roots) {
+        return true;
+    }
+    foreach ($roots as $root) {
+        if ($path === $root || strpos($path . '/', $root . '/') === 0) {
+            return true;
+        }
+    }
+    return false;
+}
+
+function defaultStartPath(array $roots): string
+{
+    foreach ($roots as $root) {
+        if (is_dir($root) && is_readable($root)) {
+            return $root;
+        }
+    }
+    return '/';
+}
+
+$roots = allowedRoots();
 $path = $_GET['path'] ?? '';
-$path = $path === '' ? '/' : $path;
+$path = $path === '' ? defaultStartPath($roots) : $path;
 
 $real = realpath($path);
-if ($real === false || !is_dir($real) || !is_readable($real)) {
+if ($real === false || !is_dir($real) || !is_readable($real) || !withinAllowedRoots($real, $roots)) {
     json_fail(404, 'Verzeichnis nicht gefunden oder nicht lesbar.');
 }
 $real = rtrim($real, '/\\');
@@ -49,7 +101,7 @@ foreach ($entries as $entry) {
 sort($dirs, SORT_FLAG_CASE | SORT_STRING);
 
 $parent = dirname($real);
-if ($parent === $real) {
+if ($parent === $real || !withinAllowedRoots($parent, $roots)) {
     $parent = null;
 }
 

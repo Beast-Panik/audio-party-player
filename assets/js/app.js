@@ -762,7 +762,7 @@
 
       btn.addEventListener('click', function () {
         backdrop.hidden = false;
-        load(targetInput.value.trim() || '/');
+        load(targetInput.value.trim()); // leer = Server waehlt sinnvollen Startpunkt (open_basedir-bewusst)
       });
       btnUp.addEventListener('click', function () {
         var parent = btnUp.getAttribute('data-parent');
@@ -996,8 +996,12 @@
       var url;
       try { url = new URL(a.href, window.location.href); } catch (err) { return; }
       if (!isSoftNavUrl(url)) return;
-      if (url.pathname === window.location.pathname) return;
+      // Auch beim erneuten Klick auf den schon aktiven Menuepunkt den
+      // nativen Browser-Reload verhindern - sonst wuerde genau das den
+      // echten Seitenwechsel (und damit einen Wiedergabe-Abbruch) ausloesen,
+      // den die Soft-Navigation eigentlich verhindern soll.
       e.preventDefault();
+      if (url.pathname === window.location.pathname) return;
       loadUrl(url.href, true);
     });
 
