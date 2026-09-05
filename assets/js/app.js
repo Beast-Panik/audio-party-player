@@ -679,6 +679,65 @@
   });
 
   /* ================================================================== *
+   * Ordner-Picker (admin/library.php) - blaettert Server-Verzeichnisse
+   * per api/browse_dirs.php durch, damit der absolute Pfad nicht von Hand
+   * herausgefunden werden muss.
+   * ================================================================== */
+  document.querySelectorAll('.btn-browse-dir').forEach(function (btn) {
+    var targetInput = document.getElementById(btn.getAttribute('data-target'));
+    var backdrop = document.getElementById('dir-picker-backdrop');
+    var pathLabel = document.getElementById('dir-picker-path');
+    var list = document.getElementById('dir-picker-list');
+    var btnUp = document.getElementById('dir-picker-up');
+    var btnChoose = document.getElementById('dir-picker-choose');
+    var btnCancel = document.getElementById('dir-picker-cancel');
+    var currentPath = '/';
+
+    function load(path) {
+      fetch(api('api/browse_dirs.php?path=' + encodeURIComponent(path)))
+        .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+        .then(function (res) {
+          if (!res.ok) {
+            list.innerHTML = '<div class="app-empty">' + escapeHtml(res.body.error || 'Fehler beim Laden.') + '</div>';
+            return;
+          }
+          currentPath = res.body.path;
+          pathLabel.textContent = currentPath;
+          btnUp.disabled = !res.body.parent;
+          btnUp.setAttribute('data-parent', res.body.parent || '');
+          if (!res.body.dirs.length) {
+            list.innerHTML = '<div class="app-empty">Keine Unterordner.</div>';
+            return;
+          }
+          list.innerHTML = res.body.dirs.map(function (name) {
+            return '<div class="pnk-list-item app-dir-picker-item" data-name="' + escapeHtml(name) + '">📁 ' + escapeHtml(name) + '</div>';
+          }).join('');
+          list.querySelectorAll('.app-dir-picker-item').forEach(function (item) {
+            item.addEventListener('click', function () {
+              var next = (currentPath === '/' ? '' : currentPath) + '/' + item.getAttribute('data-name');
+              load(next);
+            });
+          });
+        });
+    }
+
+    btn.addEventListener('click', function () {
+      backdrop.hidden = false;
+      load(targetInput.value.trim() || '/');
+    });
+    btnUp.addEventListener('click', function () {
+      var parent = btnUp.getAttribute('data-parent');
+      if (parent) load(parent);
+    });
+    btnChoose.addEventListener('click', function () {
+      targetInput.value = currentPath;
+      backdrop.hidden = true;
+    });
+    btnCancel.addEventListener('click', function () { backdrop.hidden = true; });
+    backdrop.addEventListener('click', function (e) { if (e.target === backdrop) backdrop.hidden = true; });
+  });
+
+  /* ================================================================== *
    * Player-Sperre (PIN) - rein clientseitiges Blur-Overlay. Die Sperre
    * ruehrt die <audio>-Elemente nicht an, die Musik spielt also ungestoert
    * weiter waehrend die Bedienung gesperrt ist. Der Sidebar-Button ist nur

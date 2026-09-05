@@ -74,7 +74,10 @@ require __DIR__ . '/../templates/admin_header.php';
       </div>
       <div>
         <label class="pnk-label">Absoluter Server-Pfad</label>
-        <input class="pnk-input" type="text" name="path" placeholder="/home/username/musik" required>
+        <div style="display:flex; gap:8px;">
+          <input class="pnk-input" type="text" name="path" id="library-path-input" placeholder="/home/username/musik" required style="flex:1;">
+          <button class="pnk-btn pnk-btn--ghost btn-browse-dir" type="button" data-target="library-path-input" title="Ordner auf dem Server durchsuchen">📁 Ordner wählen</button>
+        </div>
       </div>
     </div>
     <div class="pnk-field-row" style="margin:12px 0;">
@@ -116,5 +119,21 @@ require __DIR__ . '/../templates/admin_header.php';
   </div>
   <?php endforeach; ?>
 <?php endif; ?>
+
+<div class="pnk-modal-backdrop" id="dir-picker-backdrop" hidden>
+  <div class="pnk-modal" style="width:520px;">
+    <div class="pnk-modal__header">
+      <span class="pnk-card__title">Ordner wählen</span>
+      <button class="pnk-btn pnk-btn--ghost pnk-btn--icon" id="dir-picker-cancel" type="button" aria-label="Schließen">✕</button>
+    </div>
+    <div class="pnk-text-muted" id="dir-picker-path" style="font-family:var(--pnk-font-mono,monospace); font-size:12px; margin-bottom:8px; word-break:break-all;">/</div>
+    <button class="pnk-btn pnk-btn--ghost pnk-btn--sm" id="dir-picker-up" type="button" style="margin-bottom:8px;">⬆ Übergeordneter Ordner</button>
+    <div id="dir-picker-list" class="app-dir-picker-list"><div class="app-empty">Lade…</div></div>
+    <div class="pnk-modal__footer">
+      <button class="pnk-btn" id="dir-picker-cancel-2" type="button" onclick="document.getElementById('dir-picker-backdrop').hidden = true;">Abbrechen</button>
+      <button class="pnk-btn pnk-btn--primary" id="dir-picker-choose" type="button">Diesen Ordner übernehmen</button>
+    </div>
+  </div>
+</div>
 
 <?php require __DIR__ . '/../templates/admin_footer.php'; ?>

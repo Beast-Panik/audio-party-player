@@ -264,6 +264,7 @@ html.app-sidebar-preload-collapsed .app-shell {
   column-gap: var(--pnk-space-3);
 }
 .app-topbar-left {
+  grid-column: 1;
   display: flex;
   align-items: center;
   gap: var(--pnk-space-2);
@@ -275,11 +276,13 @@ html.app-sidebar-preload-collapsed .app-shell {
   white-space: nowrap;
 }
 .app-topbar-center {
+  grid-column: 2;
   display: flex;
   justify-content: center;
 }
 .app-topbar-center[hidden] { display: none; }
 .app-topbar-right {
+  grid-column: 3;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -571,4 +574,17 @@ html.app-sidebar-preload-collapsed .app-sidebar-heading {
   .app-topbar-brand__text { display: none; }
   .app-countdown { font-size: 16px; }
   .app-player-bar__progress { order: 1; flex-basis: 100%; }
+}
+
+.app-dir-picker-list {
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid var(--pnk-border);
+  border-radius: var(--pnk-radius-sm);
+}
+.app-dir-picker-item {
+  cursor: pointer;
+}
+.app-dir-picker-item:hover {
+  background: var(--pnk-hover-bg);
 }

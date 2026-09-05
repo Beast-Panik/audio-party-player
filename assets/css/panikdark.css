@@ -535,7 +535,7 @@
 .pnk-tabs {
   display: flex;
   gap: 2px;
-  background: #4e4e56;
+  background: var(--pnk-surface-sunken);
   border-radius: var(--pnk-radius-sm);
   padding: 3px;
 }
@@ -546,8 +546,8 @@
   cursor: pointer;
   transition: background-color var(--pnk-transition);
 }
-.pnk-tab:hover { background: #71717a; }
-.pnk-tab.is-active { background: #27272a; }
+.pnk-tab:hover { background: var(--pnk-hover-bg); }
+.pnk-tab.is-active { background: var(--pnk-selected-bg); color: var(--pnk-selected-text); }
 
 /* ==========================================================================
    8. LISTEN / TABELLEN
