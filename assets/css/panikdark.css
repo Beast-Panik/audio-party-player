@@ -630,6 +630,7 @@
   justify-content: center;
   z-index: 1000;
 }
+.pnk-modal-backdrop[hidden] { display: none; }
 
 .pnk-modal {
   background: var(--pnk-surface-alt);

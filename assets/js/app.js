@@ -500,7 +500,20 @@
       activeAudio.volume = 1;
       var resume = function () {
         activeAudio.currentTime = state.position || 0;
-        if (state.playing) activeAudio.play().catch(function () {});
+        if (state.playing) {
+          // Nach einem Seitenwechsel hat das neu geladene Dokument noch keine
+          // Nutzerinteraktion - Firefox/Chrome blockieren dann hoerbares
+          // Autoplay. Stumm geschaltetes Autoplay ist dagegen immer erlaubt,
+          // daher stumm starten und sofort nach Start wieder aufdrehen.
+          activeAudio.muted = true;
+          var unmute = function () { activeAudio.muted = false; };
+          var p = activeAudio.play();
+          if (p && typeof p.then === 'function') {
+            p.then(unmute).catch(unmute);
+          } else {
+            unmute();
+          }
+        }
         activeAudio.removeEventListener('loadedmetadata', resume);
       };
       activeAudio.addEventListener('loadedmetadata', resume);
