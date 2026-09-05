@@ -10,8 +10,9 @@ use App\Repositories\UserRepository;
 
 function render_page(string $title, string $body): void
 {
-    echo '<!DOCTYPE html><html lang="de" data-theme="dark"><head><meta charset="utf-8">'
+    echo '<!DOCTYPE html><html lang="de"><head><meta charset="utf-8">'
         . '<meta name="viewport" content="width=device-width, initial-scale=1">'
+        . '<script>(function(){try{var t=localStorage.getItem("pnk-theme");if(t)document.documentElement.setAttribute("data-theme",t);}catch(e){}})();</script>'
         . '<title>' . htmlspecialchars($title, ENT_QUOTES) . ' · Einrichtung</title>'
         . '<link rel="stylesheet" href="assets/css/panikdark.css">'
         . '<link rel="stylesheet" href="assets/css/app.css">'

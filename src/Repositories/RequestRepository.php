@@ -87,6 +87,14 @@ final class RequestRepository
         return $stmt->fetchAll();
     }
 
+    public function find(int $id): ?array
+    {
+        $stmt = Database::get()->prepare('SELECT * FROM requests WHERE id = ?');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
     public function countPending(): int
     {
         $stmt = Database::get()->query("SELECT COUNT(*) AS c FROM requests WHERE status = 'pending'");

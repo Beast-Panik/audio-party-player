@@ -30,6 +30,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($form === 'anzeige') {
+        Csrf::requireValid();
+        $settings->set('ticker_enabled', !empty($_POST['ticker_enabled']) ? '1' : '0');
+        $settings->set('countdown_enabled', !empty($_POST['countdown_enabled']) ? '1' : '0');
+        $success = 'Einstellungen gespeichert.';
+    }
+
     if ($form === 'gaeste_wuensche') {
         Csrf::requireValid();
         $guestLimitCount = (int) ($_POST['guest_limit_count'] ?? 0);
@@ -42,6 +49,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $settings->set('guest_limit_count', (string) $guestLimitCount);
             $settings->set('guest_limit_minutes', (string) max(1, $guestLimitMinutes));
+            $success = 'Einstellungen gespeichert.';
+        }
+    }
+
+    if ($form === 'player') {
+        Csrf::requireValid();
+        $crossfadeSeconds = (int) ($_POST['crossfade_seconds'] ?? 3);
+        if ($crossfadeSeconds < 1 || $crossfadeSeconds > 15) {
+            $error = 'Uebergangszeit muss zwischen 1 und 15 Sekunden liegen.';
+        } else {
+            $settings->set('crossfade_enabled', !empty($_POST['crossfade_enabled']) ? '1' : '0');
+            $settings->set('crossfade_seconds', (string) $crossfadeSeconds);
             $success = 'Einstellungen gespeichert.';
         }
     }
@@ -80,6 +99,10 @@ $requestUrlOverride = $settings->get('request_url_override', '');
 $requestUrl = ($requestUrlOverride ?: rtrim(Config::get('app_url', ''), '/')) . app_url('request.php');
 $guestLimitCount = (int) $settings->get('guest_limit_count', '3');
 $guestLimitMinutes = (int) $settings->get('guest_limit_minutes', '60');
+$tickerEnabled = $settings->get('ticker_enabled', '0') === '1';
+$countdownEnabled = $settings->get('countdown_enabled', '0') === '1';
+$crossfadeEnabled = $settings->get('crossfade_enabled', '0') === '1';
+$crossfadeSeconds = (int) $settings->get('crossfade_seconds', '3');
 
 if (!function_exists('settings_accordion_open')) {
     function settings_accordion_open(string $key, string $openSection): string
@@ -114,6 +137,28 @@ require __DIR__ . '/../templates/admin_header.php';
   </div>
 </details>
 
+<details class="pnk-card app-accordion"<?= settings_accordion_open('anzeige', $openSection) ?>>
+  <summary class="pnk-card__header">
+    <span class="pnk-card__title app-accordion__title"><span aria-hidden="true">📺</span> Anzeige</span>
+    <span class="app-accordion__chevron" aria-hidden="true">▸</span>
+  </summary>
+  <div class="app-accordion__body">
+    <form method="post" action="<?= app_url('admin/settings.php') ?>">
+      <?= Csrf::field() ?>
+      <input type="hidden" name="form" value="anzeige">
+      <label class="pnk-field-row" style="cursor:pointer; margin-bottom:12px;">
+        <input class="pnk-checkbox" type="checkbox" name="ticker_enabled" value="1" <?= $tickerEnabled ? 'checked' : '' ?>>
+        <span>Ticker mit aktuellem Song im Menü anzeigen</span>
+      </label>
+      <label class="pnk-field-row" style="cursor:pointer;">
+        <input class="pnk-checkbox" type="checkbox" name="countdown_enabled" value="1" <?= $countdownEnabled ? 'checked' : '' ?>>
+        <span>Countdown bis zum nächsten Track im Header anzeigen</span>
+      </label>
+      <button class="pnk-btn pnk-btn--primary" type="submit" style="margin-top:16px;">Speichern</button>
+    </form>
+  </div>
+</details>
+
 <details class="pnk-card app-accordion"<?= settings_accordion_open('gaeste_wuensche', $openSection) ?>>
   <summary class="pnk-card__header">
     <span class="pnk-card__title app-accordion__title"><span aria-hidden="true">🎶</span> Gäste-Wünsche</span>
@@ -123,7 +168,7 @@ require __DIR__ . '/../templates/admin_header.php';
     <form method="post" action="<?= app_url('admin/settings.php') ?>">
       <?= Csrf::field() ?>
       <input type="hidden" name="form" value="gaeste_wuensche">
-      <div class="grid-2" style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+      <div class="grid-2">
         <div>
           <label class="pnk-label">Max. Wünsche pro Gast</label>
           <input class="pnk-input" type="number" min="0" step="1" name="guest_limit_count" value="<?= (int) $guestLimitCount ?>">
@@ -138,6 +183,30 @@ require __DIR__ . '/../templates/admin_header.php';
       <p class="pnk-text-muted" style="font-size:12px; margin:10px 0 0;">
         Gäste werden ueber ein Cookie wiedererkannt (kein Login noetig) - so laesst
         sich z.B. auf "max. 3 Wünsche pro Stunde und Gast" begrenzen.
+      </p>
+      <button class="pnk-btn pnk-btn--primary" type="submit" style="margin-top:16px;">Speichern</button>
+    </form>
+  </div>
+</details>
+
+<details class="pnk-card app-accordion"<?= settings_accordion_open('player', $openSection) ?>>
+  <summary class="pnk-card__header">
+    <span class="pnk-card__title app-accordion__title"><span aria-hidden="true">🎚️</span> Player</span>
+    <span class="app-accordion__chevron" aria-hidden="true">▸</span>
+  </summary>
+  <div class="app-accordion__body">
+    <form method="post" action="<?= app_url('admin/settings.php') ?>">
+      <?= Csrf::field() ?>
+      <input type="hidden" name="form" value="player">
+      <label class="pnk-field-row" style="cursor:pointer; margin-bottom:12px;">
+        <input class="pnk-checkbox" type="checkbox" name="crossfade_enabled" value="1" <?= $crossfadeEnabled ? 'checked' : '' ?>>
+        <span>Crossfade beim Trackwechsel</span>
+      </label>
+      <label class="pnk-label">Übergangszeit (Sekunden)</label>
+      <input class="pnk-input" type="number" min="1" max="15" step="1" name="crossfade_seconds" value="<?= (int) $crossfadeSeconds ?>" style="max-width:120px;">
+      <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0;">
+        Der aktuelle Track wird ausgeblendet, waehrend der naechste eingeblendet
+        und schon gestartet wird - kein harter Schnitt zwischen zwei Songs.
       </p>
       <button class="pnk-btn pnk-btn--primary" type="submit" style="margin-top:16px;">Speichern</button>
     </form>

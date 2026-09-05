@@ -36,18 +36,18 @@
     try { localStorage.setItem('app_guest_name', nameInput.value); } catch (e) {}
   });
 
+  var INSPIRATION_LIMIT = 40;
   var searchInput = document.getElementById('search-input');
   var resultsCard = document.getElementById('results-card');
   var resultsList = document.getElementById('results-list');
+  var resultsTitle = document.getElementById('results-title');
   var searchTimer = null;
 
   function renderResults(tracks) {
     if (!tracks.length) {
-      resultsCard.style.display = 'block';
       resultsList.innerHTML = '<div class="app-empty">Nichts gefunden.</div>';
       return;
     }
-    resultsCard.style.display = 'block';
     var html = '';
     tracks.forEach(function (t) {
       html += '<div class="app-request-item">' +
@@ -62,6 +62,11 @@
     resultsList.innerHTML = html;
     resultsList.querySelectorAll('.btn-wish').forEach(function (btn) {
       btn.addEventListener('click', function () {
+        if (nameInput.value.trim() === '') {
+          showFeedback('danger', 'Bitte gib zuerst deinen Namen ein.');
+          nameInput.focus();
+          return;
+        }
         btn.disabled = true;
         fetch(api('api/requests.php'), {
           method: 'POST',
@@ -83,11 +88,9 @@
   }
 
   function search(q) {
-    if (!q || q.trim() === '') {
-      resultsCard.style.display = 'none';
-      return;
-    }
-    fetch(api('api/tracks.php?limit=30&q=' + encodeURIComponent(q)))
+    q = q || '';
+    if (resultsTitle) resultsTitle.textContent = q.trim() === '' ? 'Inspiration' : 'Ergebnisse';
+    fetch(api('api/tracks.php?limit=' + INSPIRATION_LIMIT + '&q=' + encodeURIComponent(q)))
       .then(function (r) { return r.json(); })
       .then(function (j) { renderResults(j.tracks || []); });
   }
@@ -96,6 +99,9 @@
     clearTimeout(searchTimer);
     searchTimer = setTimeout(function () { search(searchInput.value); }, 120);
   });
+
+  // Immer 40 Songs als Inspiration zeigen, auch ohne Sucheingabe.
+  search('');
 
   var queueList = document.getElementById('queue-list');
   function renderQueue(requests) {

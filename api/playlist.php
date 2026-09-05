@@ -30,6 +30,10 @@ if ($method === 'GET') {
     $rows = $playlist->all();
     echo json_encode([
         'auto_dj' => $autoDj,
+        'crossfade_enabled' => $settings->get('crossfade_enabled', '0') === '1',
+        'crossfade_seconds' => (int) $settings->get('crossfade_seconds', '3'),
+        'ticker_enabled' => $settings->get('ticker_enabled', '0') === '1',
+        'countdown_enabled' => $settings->get('countdown_enabled', '0') === '1',
         'items' => array_map(static function (array $r): array {
             return [
                 'id' => (int) $r['id'],
@@ -65,13 +69,35 @@ if ($method === 'POST') {
         exit;
     }
 
+    if ($action === 'play_now') {
+        $trackId = (int) ($input['track_id'] ?? 0);
+        if (!(new TrackRepository())->findById($trackId)) {
+            json_fail(404, 'Song nicht gefunden.');
+        }
+        $id = $playlist->addAtFront($trackId, PlaylistRepository::SOURCE_MANUAL);
+        echo json_encode(['ok' => true, 'id' => $id]);
+        exit;
+    }
+
     if ($action === 'remove') {
         $playlist->remove((int) ($input['id'] ?? 0));
         echo json_encode(['ok' => true]);
         exit;
     }
 
-    if ($action === 'mark_played') {
+    if ($action === 'reorder') {
+        $ids = array_map('intval', (array) ($input['ids'] ?? []));
+        if (!empty($ids)) {
+            $playlist->reorder($ids);
+        }
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
+    if ($action === 'advance') {
+        // Ein Track ist zu Ende gespielt (oder per Crossfade abgeloest) -
+        // als gespielt markieren, aus der Playlist nehmen und bei Bedarf
+        // (Auto-DJ) wieder auffuellen.
         $trackId = (int) ($input['track_id'] ?? 0);
         $playlist->markPlayed($trackId);
         if ($settings->get('auto_dj_enabled', '0') === '1') {

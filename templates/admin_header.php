@@ -4,55 +4,132 @@
  * $activeNav eines von: dashboard, library, requests, users, settings, player
  */
 use App\Auth;
+use App\Repositories\PlaylistRepository;
 use App\Repositories\SettingRepository;
 
 $pageTitle = $pageTitle ?? 'Party Player';
 $activeNav = $activeNav ?? '';
-$appName = (new SettingRepository())->get('app_name', 'Party Player - pan1k.de');
+$settingsRepo = new SettingRepository();
+$appName = $settingsRepo->get('app_name', 'Party Player - pan1k.de');
+$hasLockPin = (bool) $settingsRepo->get('lock_pin_hash');
+$tickerEnabled = $settingsRepo->get('ticker_enabled', '0') === '1';
+$countdownEnabled = $settingsRepo->get('countdown_enabled', '0') === '1';
+$playlistCountForNav = Auth::isLoggedIn() ? (new PlaylistRepository())->count() : 0;
 
 if (!function_exists('nav_item')) {
     function nav_item(string $key, string $href, string $label, string $active, string $icon = ''): string
     {
         $cls = 'pnk-nav-item app-nav-btn' . ($key === $active ? ' is-active' : '');
         $iconHtml = $icon !== '' ? '<span class="app-nav-icon" aria-hidden="true">' . htmlspecialchars($icon, ENT_QUOTES) . '</span>' : '';
-        return '<a class="' . $cls . '" href="' . htmlspecialchars($href, ENT_QUOTES) . '">' . $iconHtml . '<span class="app-nav-label">' . htmlspecialchars($label, ENT_QUOTES) . '</span></a>';
+        return '<a class="' . $cls . '" href="' . htmlspecialchars($href, ENT_QUOTES) . '" title="' . htmlspecialchars($label, ENT_QUOTES) . '">' . $iconHtml . '<span class="app-nav-label">' . htmlspecialchars($label, ENT_QUOTES) . '</span></a>';
     }
 }
 ?>
 <!DOCTYPE html>
-<html lang="de" data-theme="dark">
+<html lang="de">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+// Vor dem ersten Rendern gespeichertes Theme + Sidebar-Zustand anwenden,
+// damit es beim Laden nicht kurz aufblitzt (falsches Theme/Sidebar-Breite).
+(function () {
+  try {
+    var theme = localStorage.getItem('pnk-theme');
+    if (theme) document.documentElement.setAttribute('data-theme', theme);
+  } catch (e) {}
+  try {
+    if (localStorage.getItem('app_sidebar_collapsed') === '1') {
+      document.documentElement.classList.add('app-sidebar-preload-collapsed');
+    }
+  } catch (e) {}
+})();
+</script>
 <title><?= htmlspecialchars($pageTitle, ENT_QUOTES) ?> · <?= htmlspecialchars($appName, ENT_QUOTES) ?></title>
 <link rel="stylesheet" href="<?= app_url('assets/css/panikdark.css') ?>">
 <link rel="stylesheet" href="<?= app_url('assets/css/app.css') ?>">
 </head>
 <body class="pnk-app" style="display:block;">
-<div class="pnk-app" style="grid-template-columns:220px 1fr; grid-template-rows:auto 1fr; grid-template-areas:'sidebar topbar' 'sidebar main';">
-  <header class="pnk-topbar" style="grid-column:1 / -1; justify-content:space-between;">
-    <div class="app-topbar-brand"><span class="dot"></span> <?= htmlspecialchars($appName, ENT_QUOTES) ?></div>
-    <div class="pnk-flex pnk-gap-2" style="display:flex; gap:8px; align-items:center; margin-left:auto;">
+<div class="pnk-app app-shell" id="app-shell">
+  <div class="app-sidebar-backdrop" id="sidebar-backdrop"></div>
+
+  <header class="pnk-topbar app-topbar">
+    <div class="app-topbar-left">
+      <button class="pnk-btn pnk-btn--ghost pnk-btn--icon app-sidebar-toggle" id="sidebar-toggle" title="Menü ein-/ausklappen" aria-label="Menü ein-/ausklappen">☰</button>
+      <div class="app-topbar-brand"><span class="dot"></span> <span class="app-topbar-brand__text"><?= htmlspecialchars($appName, ENT_QUOTES) ?></span></div>
+    </div>
+    <div class="app-topbar-center" id="countdown-wrap" hidden>
+      <div class="app-countdown" id="countdown-value">--:--</div>
+    </div>
+    <div class="app-topbar-right">
+      <button class="pnk-btn pnk-btn--ghost pnk-btn--icon" id="theme-toggle" type="button" title="Theme wechseln" aria-label="Theme wechseln">🌙</button>
       <?php if (Auth::isLoggedIn()): ?>
-        <span class="pnk-text-muted" style="font-size:13px;"><?= htmlspecialchars(Auth::username() ?? '', ENT_QUOTES) ?></span>
+        <span class="pnk-text-muted app-topbar-user" style="font-size:13px;"><?= htmlspecialchars(Auth::username() ?? '', ENT_QUOTES) ?></span>
         <a class="pnk-btn pnk-btn--ghost pnk-btn--sm" href="<?= app_url('logout.php') ?>">Abmelden</a>
       <?php endif; ?>
     </div>
   </header>
 
-  <aside class="pnk-sidebar">
-    <h6 style="font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--pnk-text-dim);margin:4px 8px 4px;font-weight:600;">Party</h6>
+  <div class="app-ticker" id="ticker-wrap" hidden>
+    <div class="app-ticker__track" id="ticker-track"><span id="ticker-text"></span></div>
+  </div>
+
+  <?php if (Auth::isLoggedIn()): ?>
+  <div class="app-player-bar" id="nowplaying" hidden>
+    <audio id="audio-el" preload="auto"></audio>
+    <audio id="audio-el-b" preload="auto"></audio>
+    <div class="app-player-bar__controls">
+      <button class="pnk-btn app-player-btn" id="btn-prev" title="Zurueck (Anfang)">⏮</button>
+      <button class="pnk-btn pnk-btn--primary app-player-btn" id="btn-playpause" title="Play/Pause">▶</button>
+      <button class="pnk-btn app-player-btn" id="btn-next" title="Naechster in der Playlist">⏭</button>
+    </div>
+    <div class="app-player-bar__meta">
+      <div class="app-player-bar__title" id="np-title">-</div>
+      <div class="app-player-bar__artist" id="np-artist">-</div>
+    </div>
+    <div class="app-player-bar__progress">
+      <span id="np-current">0:00</span>
+      <input type="range" id="np-seek" min="0" max="100" value="0" step="0.1">
+      <span id="np-duration">0:00</span>
+    </div>
+    <div class="app-player-bar__next">
+      <span class="pnk-text-muted">Als nächstes:</span>
+      <span id="np-next">-</span>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <aside class="pnk-sidebar app-sidebar" id="sidebar">
+    <button class="app-sidebar-collapse-toggle" id="sidebar-collapse-toggle" title="Menü einklappen" aria-label="Menü einklappen">‹</button>
+    <h6 class="app-sidebar-heading">Party</h6>
     <nav class="pnk-nav">
-      <?= nav_item('player', app_url('player.php'), 'Player', $activeNav, '🎧') ?>
+      <div class="app-nav-item-wrap">
+        <?= nav_item('player', app_url('player.php'), 'Player', $activeNav, '🎧') ?>
+        <span class="app-nav-badge" id="nav-playlist-badge"<?= $playlistCountForNav > 0 ? '' : ' hidden' ?>><?= $playlistCountForNav ?></span>
+      </div>
       <?= nav_item('requests', app_url('admin/requests.php'), 'Wunschliste', $activeNav, '🎶') ?>
     </nav>
-    <h6 style="font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--pnk-text-dim);margin:16px 8px 4px;font-weight:600;">Verwaltung</h6>
+    <h6 class="app-sidebar-heading">Verwaltung</h6>
     <nav class="pnk-nav">
       <?= nav_item('dashboard', app_url('admin/index.php'), 'Uebersicht', $activeNav, '📊') ?>
       <?= nav_item('library', app_url('admin/library.php'), 'Bibliothek', $activeNav, '💿') ?>
       <?= nav_item('users', app_url('admin/users.php'), 'Benutzer', $activeNav, '👤') ?>
       <?= nav_item('settings', app_url('admin/settings.php'), 'Einstellungen', $activeNav, '⚙️') ?>
     </nav>
+
+    <?php if (Auth::isLoggedIn()): ?>
+    <div class="app-sidebar-bottom">
+      <?php if ($hasLockPin): ?>
+        <button class="pnk-nav-item app-nav-btn app-lock-nav-btn" id="btn-lock" type="button" title="Player sperren">
+          <span class="app-nav-icon" aria-hidden="true">🔒</span><span class="app-nav-label">Player sperren</span>
+        </button>
+      <?php else: ?>
+        <a class="pnk-nav-item app-nav-btn app-lock-nav-btn" href="<?= app_url('admin/settings.php') ?>" title="PIN einrichten, um den Player sperren zu koennen">
+          <span class="app-nav-icon" aria-hidden="true">🔑</span><span class="app-nav-label">PIN einrichten</span>
+        </a>
+      <?php endif; ?>
+    </div>
+    <?php endif; ?>
   </aside>
 
   <main class="pnk-main app-content" style="grid-area:main;">

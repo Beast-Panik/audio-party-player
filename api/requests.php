@@ -59,7 +59,10 @@ if ($method === 'POST') {
     if ($action === 'create') {
         $trackId = (int) ($input['track_id'] ?? 0);
         $guestName = trim((string) ($input['guest_name'] ?? ''));
-        $guestName = $guestName !== '' ? mb_substr($guestName, 0, 60) : null;
+        if ($guestName === '') {
+            json_fail(400, 'Bitte gib deinen Namen ein.');
+        }
+        $guestName = mb_substr($guestName, 0, 60);
         $guestToken = GuestIdentity::id();
 
         $track = (new TrackRepository())->findById($trackId);
@@ -123,6 +126,21 @@ if ($method === 'POST') {
     if ($action === 'delete') {
         $id = (int) ($input['id'] ?? 0);
         $repo->delete($id);
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
+    if ($action === 'accept') {
+        // Ein Gast-Wunsch wird nie direkt abgespielt, sondern immer unten
+        // an die Playlist angehaengt - der Player arbeitet sie der Reihe
+        // nach ab (bzw. Crossfade-Uebergang).
+        $id = (int) ($input['id'] ?? 0);
+        $request = $repo->find($id);
+        if (!$request) {
+            json_fail(404, 'Wunsch nicht gefunden.');
+        }
+        (new PlaylistRepository())->add((int) $request['track_id'], PlaylistRepository::SOURCE_GUEST, $id);
+        $repo->updateStatus($id, RequestRepository::STATUS_APPROVED);
         echo json_encode(['ok' => true]);
         exit;
     }

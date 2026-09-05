@@ -26,10 +26,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $appName = (new SettingRepository())->get('app_name', 'Party Player - pan1k.de');
 ?>
 <!DOCTYPE html>
-<html lang="de" data-theme="dark">
+<html lang="de">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<script>
+(function () {
+  try {
+    var theme = localStorage.getItem('pnk-theme');
+    if (theme) document.documentElement.setAttribute('data-theme', theme);
+  } catch (e) {}
+})();
+</script>
 <title>Anmelden · <?= htmlspecialchars($appName, ENT_QUOTES) ?></title>
 <link rel="stylesheet" href="<?= app_url('assets/css/panikdark.css') ?>">
 <link rel="stylesheet" href="<?= app_url('assets/css/app.css') ?>">

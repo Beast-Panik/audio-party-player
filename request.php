@@ -23,8 +23,8 @@ require __DIR__ . '/templates/public_header.php';
 <p class="lede">Song gesucht? Einfach suchen und wünschen – der DJ sieht deinen Wunsch sofort.</p>
 
 <div class="pnk-card" style="margin-bottom:16px;">
-  <label class="pnk-label" for="guest-name">Dein Name (optional)</label>
-  <input class="pnk-input" type="text" id="guest-name" placeholder="z.B. Alex" maxlength="60" style="margin-bottom:12px;">
+  <label class="pnk-label" for="guest-name">Dein Name</label>
+  <input class="pnk-input" type="text" id="guest-name" placeholder="z.B. Alex" maxlength="60" required style="margin-bottom:12px;">
 
   <label class="pnk-label" for="search-input">Song suchen</label>
   <input class="pnk-input pnk-search" type="text" id="search-input" placeholder="Titel, Interpret oder Album…" autofocus>
@@ -32,8 +32,8 @@ require __DIR__ . '/templates/public_header.php';
 
 <div id="feedback"></div>
 
-<div class="pnk-card" id="results-card" style="margin-bottom:16px; display:none;">
-  <div class="pnk-card__header"><span class="pnk-card__title">Ergebnisse</span></div>
+<div class="pnk-card" id="results-card" style="margin-bottom:16px;">
+  <div class="pnk-card__header"><span class="pnk-card__title" id="results-title">Inspiration</span></div>
   <div id="results-list"></div>
 </div>
 

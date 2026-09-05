@@ -9,8 +9,8 @@ use App\Util;
  * Die Playlist ist die konkrete "als naechstes dran"-Warteschlange fuer den
  * Player - anders als die Wunschliste (dort landen Gast-Wuensche, die im
  * manuellen Modus erst vom Admin freigegeben werden muessen). Reihenfolge
- * ergibt sich einfach aus der Einfuege-Reihenfolge (id/created_at), es gibt
- * bewusst keine manuelle Sortierung.
+ * ergibt sich aus der "position"-Spalte (per Drag&Drop im Player sortierbar),
+ * neue Eintraege werden ans Ende angehaengt (hoechste Position + 1).
  */
 final class PlaylistRepository
 {
@@ -26,7 +26,7 @@ final class PlaylistRepository
                 FROM playlist p
                 JOIN tracks t ON t.id = p.track_id
                 LEFT JOIN requests r ON r.id = p.request_id
-                ORDER BY p.id ASC';
+                ORDER BY p.position ASC, p.id ASC';
         return Database::get()->query($sql)->fetchAll();
     }
 
@@ -41,7 +41,7 @@ final class PlaylistRepository
         return $rows[0] ?? null;
     }
 
-    /** Fuegt einen Track an - steht er schon in der Playlist, wird nicht doppelt eingereiht. */
+    /** Fuegt einen Track ans Ende der Playlist an - steht er schon drin, wird nicht doppelt eingereiht. */
     public function add(int $trackId, string $source = self::SOURCE_MANUAL, ?int $requestId = null): int
     {
         $pdo = Database::get();
@@ -52,11 +52,47 @@ final class PlaylistRepository
             return (int) $existing['id'];
         }
 
+        $nextPos = (int) $pdo->query('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM playlist')->fetch()['p'];
         $stmt = $pdo->prepare(
-            'INSERT INTO playlist (track_id, source, request_id, created_at) VALUES (?, ?, ?, ?)'
+            'INSERT INTO playlist (track_id, source, request_id, position, created_at) VALUES (?, ?, ?, ?, ?)'
         );
-        $stmt->execute([$trackId, $source, $requestId, Util::now()]);
+        $stmt->execute([$trackId, $source, $requestId, $nextPos, Util::now()]);
         return (int) $pdo->lastInsertId();
+    }
+
+    /**
+     * Stellt einen Track an den Anfang der Playlist (niedrigste Position) -
+     * fuer den "Jetzt spielen"-Fall (Bibliothek/Playlist), damit ein manuell
+     * gestarteter Track sofort als "aktuell" in der Playlist auftaucht.
+     */
+    public function addAtFront(int $trackId, string $source = self::SOURCE_MANUAL): int
+    {
+        $pdo = Database::get();
+        $minPos = (int) $pdo->query('SELECT COALESCE(MIN(position), 0) AS p FROM playlist')->fetch()['p'];
+
+        $stmt = $pdo->prepare('SELECT id FROM playlist WHERE track_id = ? LIMIT 1');
+        $stmt->execute([$trackId]);
+        $existing = $stmt->fetch();
+        if ($existing) {
+            $pdo->prepare('UPDATE playlist SET position = ? WHERE id = ?')->execute([$minPos - 1, $existing['id']]);
+            return (int) $existing['id'];
+        }
+
+        $stmt = $pdo->prepare(
+            'INSERT INTO playlist (track_id, source, request_id, position, created_at) VALUES (?, ?, NULL, ?, ?)'
+        );
+        $stmt->execute([$trackId, $source, $minPos - 1, Util::now()]);
+        return (int) $pdo->lastInsertId();
+    }
+
+    /** Schreibt eine neue Reihenfolge fest (Drag&Drop im Player) - $orderedIds sind Playlist-IDs. */
+    public function reorder(array $orderedIds): void
+    {
+        $pdo = Database::get();
+        $stmt = $pdo->prepare('UPDATE playlist SET position = ? WHERE id = ?');
+        foreach (array_values($orderedIds) as $i => $id) {
+            $stmt->execute([$i, (int) $id]);
+        }
     }
 
     public function remove(int $id): void

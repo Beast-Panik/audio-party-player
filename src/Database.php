@@ -21,7 +21,7 @@ final class Database
      * hoehere Code-Version, schickt einen angemeldeten Admin automatisch zu
      * install.php und die Migration laeuft dort erst nach einem Klick.
      */
-    public const SCHEMA_VERSION = 1;
+    public const SCHEMA_VERSION = 2;
 
     public static function get(): \PDO
     {
@@ -110,9 +110,9 @@ final class Database
 
     public static function ensureSchemaOn(\PDO $pdo, string $driver): void
     {
-        // MySQL kennt kein "CREATE INDEX IF NOT EXISTS" - beim wiederholten
-        // Aufruf (jede Anfrage ruft das hier als Selbstheilung auf)
-        // ignorieren wir daher "existiert bereits"-Fehler gezielt.
+        // MySQL kennt kein "CREATE INDEX IF NOT EXISTS" - beim (Neu-)Anlegen
+        // bereits vorhandener Tabellen/Indizes ignorieren wir daher gezielt
+        // "existiert bereits"-Fehler statt abzubrechen.
         self::runStatements($pdo, self::schemaStatements($driver));
 
         // Leichte Mini-Migration: Spalten, die in einer bereits bestehenden
@@ -120,12 +120,36 @@ final class Database
         // Indizes laufen, die sich auf diese Spalten beziehen.
         self::ensureColumn($pdo, $driver, 'requests', 'guest_token', $driver === 'mysql' ? 'VARCHAR(32)' : 'TEXT');
         self::ensureColumn($pdo, $driver, 'tracks', 'last_played_at', $driver === 'mysql' ? 'DATETIME NULL' : 'TEXT');
+        self::ensureColumn($pdo, $driver, 'playlist', 'position', $driver === 'mysql' ? 'INT NOT NULL DEFAULT 0' : 'INTEGER NOT NULL DEFAULT 0');
 
         self::runStatements($pdo, [
             $driver === 'mysql'
                 ? 'CREATE INDEX idx_requests_guest_token ON requests (guest_token)'
                 : 'CREATE INDEX IF NOT EXISTS idx_requests_guest_token ON requests (guest_token)',
         ]);
+
+        self::backfillPlaylistPositions($pdo);
+    }
+
+    /**
+     * Einmalige Nummerierung bestehender Playlist-Eintraege nach
+     * Einfuege-Reihenfolge, direkt nachdem die position-Spalte ergaenzt
+     * wurde (dort stehen dann ueberall Nullen). Sobald irgendein Eintrag
+     * eine Position ungleich 0 hat (durch diesen Lauf selbst oder durch
+     * spaeteres manuelles Umsortieren), gilt die Migration als erledigt
+     * und wird bei folgenden Updates uebersprungen.
+     */
+    private static function backfillPlaylistPositions(\PDO $pdo): void
+    {
+        $already = (int) $pdo->query('SELECT COUNT(*) AS c FROM playlist WHERE position != 0')->fetch()['c'];
+        if ($already > 0) {
+            return;
+        }
+        $rows = $pdo->query('SELECT id FROM playlist ORDER BY id ASC')->fetchAll();
+        $stmt = $pdo->prepare('UPDATE playlist SET position = ? WHERE id = ?');
+        foreach ($rows as $i => $row) {
+            $stmt->execute([$i, $row['id']]);
+        }
     }
 
     private static function runStatements(\PDO $pdo, array $sqlStatements): void

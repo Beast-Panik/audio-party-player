@@ -8,7 +8,6 @@ Auth::requireLogin();
 
 $pageTitle = 'Player';
 $activeNav = 'player';
-$showPlayerBar = true;
 require __DIR__ . '/templates/admin_header.php';
 ?>
 
