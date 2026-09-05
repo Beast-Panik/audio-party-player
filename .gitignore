@@ -1,0 +1,15 @@
+# Laufzeit-Konfiguration (enthaelt Zugangsdaten/Secrets) - wird von install.php erzeugt
+config/config.php
+
+# SQLite-Datenbank
+data/database.sqlite
+data/database.sqlite-shm
+data/database.sqlite-wal
+
+# Scan-Zwischenstand
+data/scanstate/*.json
+
+# OS/Editor
+.DS_Store
+Thumbs.db
+*.swp

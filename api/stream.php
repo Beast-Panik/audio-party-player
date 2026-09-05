@@ -1,0 +1,82 @@
+<?php
+
+require __DIR__ . '/../bootstrap.php';
+
+use App\Auth;
+use App\Repositories\LibraryRepository;
+use App\Repositories\TrackRepository;
+
+// Wiedergabe ist bewusst Admin-only (siehe Architekturentscheidung: nur die
+// Anlage/der DJ hoert ueber den Player, Gaeste wuenschen nur).
+Auth::requireLogin();
+
+$trackId = (int) ($_GET['id'] ?? 0);
+$track = (new TrackRepository())->findById($trackId);
+if (!$track) {
+    http_response_code(404);
+    exit('Track nicht gefunden.');
+}
+
+$library = (new LibraryRepository())->findById((int) $track['library_id']);
+if (!$library) {
+    http_response_code(404);
+    exit('Bibliothek nicht gefunden.');
+}
+
+$root = realpath($library['path']);
+$fullPath = $root !== false ? realpath($root . '/' . $track['relpath']) : false;
+
+if ($root === false || $fullPath === false || !str_starts_with($fullPath, $root) || !is_file($fullPath)) {
+    http_response_code(404);
+    exit('Datei nicht gefunden.');
+}
+
+$mime = $track['codec'] === 'flac' ? 'audio/flac' : 'audio/mpeg';
+$size = filesize($fullPath);
+$start = 0;
+$end = $size - 1;
+
+header('Accept-Ranges: bytes');
+header('Content-Type: ' . $mime);
+
+if (isset($_SERVER['HTTP_RANGE']) && preg_match('/bytes=(\d*)-(\d*)/', $_SERVER['HTTP_RANGE'], $m)) {
+    if ($m[1] !== '') {
+        $start = (int) $m[1];
+    }
+    if ($m[2] !== '') {
+        $end = (int) $m[2];
+    }
+    $end = min($end, $size - 1);
+    if ($start > $end || $start >= $size) {
+        header('Content-Range: bytes */' . $size);
+        http_response_code(416);
+        exit;
+    }
+    http_response_code(206);
+    header("Content-Range: bytes {$start}-{$end}/{$size}");
+} else {
+    http_response_code(200);
+}
+
+$length = $end - $start + 1;
+header('Content-Length: ' . $length);
+
+$fh = fopen($fullPath, 'rb');
+if ($fh === false) {
+    http_response_code(500);
+    exit('Datei konnte nicht geoeffnet werden.');
+}
+
+fseek($fh, $start);
+$bufferSize = 8192;
+$remaining = $length;
+while ($remaining > 0 && !feof($fh)) {
+    $chunk = fread($fh, min($bufferSize, $remaining));
+    if ($chunk === false) {
+        break;
+    }
+    echo $chunk;
+    $remaining -= strlen($chunk);
+    flush();
+}
+fclose($fh);

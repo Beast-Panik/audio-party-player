@@ -1,0 +1,907 @@
+/*!
+ * pan!k DaRk — universelles UI-Designsystem
+ * Extrahiert aus dem Thunderbird-Theme "Dark Night Arcturus X"
+ * Framework-unabhaengig: reines CSS, funktioniert in jedem PHP-/HTML-Projekt.
+ * Einbinden mit: <link rel="stylesheet" href="panik-dark.css">
+ */
+
+/* ==========================================================================
+   1. DESIGN TOKENS
+   ========================================================================== */
+
+/* Dark ist die Standard-Identitaet des Systems: die Tokens leben im
+   ungeschuetzten :root und gelten ueberall, wo kein Theme erzwungen wird.
+   Ueber [data-theme="light"] auf <html> (oder einem Container) laesst sich
+   das helle Pendant erzwingen; ohne explizite Angabe respektiert die Seite
+   zusaetzlich die Systemeinstellung (prefers-color-scheme). Nicht-farbliche
+   Tokens (Radien, Abstaende, Typografie) sind themenunabhaengig und stehen
+   nur einmal hier. */
+
+:root,
+[data-theme="dark"] {
+  /* Flaechen / Hintergruende (dunkel -> hell gestaffelt) */
+  --pnk-bg:              #1e2022;  /* App-Hintergrund / Layout-Basis */
+  --pnk-surface:         #24282b;  /* Hauptpanel / Cards */
+  --pnk-surface-alt:     #282d30;  /* linkes Panel / Sidebar */
+  --pnk-surface-sunken:  #212427;  /* vertiefte Flaechen, z.B. Seitenpanels */
+  --pnk-surface-raised:  #31363a;  /* Toolbar, Kopfzeilen, erhabene Flaechen */
+  --pnk-elevated:        #24282b;  /* Popups, Dialoge, Dropdowns, Toasts */
+  --pnk-input-bg:        #1e2124;  /* Eingabefelder */
+  --pnk-input-bg-alt:    #2e3338;  /* Such-/Filterfelder */
+
+  /* Rahmen */
+  --pnk-border:          #111111;                     /* feine Trennlinien */
+  --pnk-border-soft:     rgba(183, 192, 196, 0.28);    /* Checkbox/Input-Rahmen */
+  --pnk-border-strong:   #4a4d4f;                      /* Eingabefeld-Rahmen */
+  --pnk-border-table:    #4f565b;                      /* Tabellenraster */
+
+  /* Text */
+  --pnk-text:            #d1d1d1;  /* Standardtext */
+  --pnk-text-muted:      #9aa0a6;  /* sekundaerer Text */
+  --pnk-text-dim:        #7a7f84;  /* Platzhalter, disabled */
+  --pnk-text-link:       #4093e6;  /* Links, Spaltenkoepfe */
+  --pnk-text-on-accent:  #ffffff;  /* Text auf kraeftigen Flaechen (Buttons) */
+  --pnk-selected-text:   #ffffff;  /* Text auf Auswahl-Hintergrund (Listen/Nav) */
+
+  /* Akzentfarben */
+  --pnk-accent:            #1373d9;  /* primaere Aktion (Buttons, Fokus) */
+  --pnk-accent-hover:      #1c83e4;
+  --pnk-accent-disabled:   #585a5f;
+  --pnk-accent-warm:       #ffa700;  /* Auszeichnung, aktiver Status, Icons */
+  --pnk-accent-warm-strong:#d38d1f;
+
+  --pnk-danger:          #e56a6a;  /* destruktive Aktionen */
+  --pnk-danger-hover:    #f87171;
+
+  --pnk-success:         #3fb950;  /* nicht aus dem Theme, ergaenzt fuer Status-UI */
+  --pnk-warning:         #e3b341;
+
+  /* Auswahl / Interaktion */
+  --pnk-selected-bg:            #275c91;  /* Listenelement: ausgewaehlt + fokussiert */
+  --pnk-selected-border:        #3871a3;
+  --pnk-selected-bg-unfocused:  #283b4d;  /* ausgewaehlt, aber nicht fokussiert */
+  --pnk-hover-bg:               #283643;  /* Listenelement: hover */
+  --pnk-focus-ring:             #0c64b1;  /* Fokus-Outline */
+
+  /* Schatten (dunkler Grund -> subtil) */
+  --pnk-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
+  --pnk-shadow:    0 4px 16px rgba(0, 0, 0, 0.45);
+  --pnk-shadow-lg: 0 12px 32px rgba(0, 0, 0, 0.55);
+
+  color-scheme: dark;
+
+  /* Radien */
+  --pnk-radius-sm:   4px;
+  --pnk-radius:      8px;
+  --pnk-radius-lg:   14px;
+  --pnk-radius-pill: 999px;
+
+  /* Abstaende */
+  --pnk-space-1: 4px;
+  --pnk-space-2: 8px;
+  --pnk-space-3: 12px;
+  --pnk-space-4: 16px;
+  --pnk-space-5: 24px;
+  --pnk-space-6: 32px;
+
+  /* Typografie */
+  --pnk-font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Ubuntu, Cantarell, Arial, sans-serif;
+  --pnk-font-mono: ui-monospace, SFMono-Regular, "Cascadia Code", Consolas, monospace;
+  --pnk-font-size: 14px;
+  --pnk-line-height: 1.5;
+
+  --pnk-transition: 120ms ease;
+}
+
+/* Helles Pendant, automatisch bei hellem Systemtheme -- nur solange nichts
+   explizit auf "dark" gesetzt wurde. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) {
+    --pnk-bg:              #eef1f5;
+    --pnk-surface:         #ffffff;
+    --pnk-surface-alt:     #f8f9fb;
+    --pnk-surface-sunken:  #e4e8ec;
+    --pnk-surface-raised:  #e9edf2;
+    --pnk-elevated:        #ffffff;
+    --pnk-input-bg:        #ffffff;
+    --pnk-input-bg-alt:    #eef1f4;
+
+    --pnk-border:          #dde1e6;
+    --pnk-border-soft:     rgba(60, 70, 84, 0.22);
+    --pnk-border-strong:   #c5cbd2;
+    --pnk-border-table:    #d6dbe0;
+
+    --pnk-text:            #1c2126;
+    --pnk-text-muted:      #5b6470;
+    --pnk-text-dim:        #889098;
+    --pnk-text-link:       #0f66c2;
+    --pnk-text-on-accent:  #ffffff;
+    --pnk-selected-text:   #0b3a63;
+
+    --pnk-accent:            #1373d9;
+    --pnk-accent-hover:      #0f63bd;
+    --pnk-accent-disabled:   #b7c2cc;
+    --pnk-accent-warm:       #e08e00;
+    --pnk-accent-warm-strong:#b8730a;
+
+    --pnk-danger:          #d1453f;
+    --pnk-danger-hover:    #b53832;
+
+    --pnk-success:         #1e8e3e;
+    --pnk-warning:         #a6720a;
+
+    --pnk-selected-bg:            #d8e8fb;
+    --pnk-selected-border:        #a9cdf2;
+    --pnk-selected-bg-unfocused:  #e7eef6;
+    --pnk-hover-bg:               #eef2f6;
+    --pnk-focus-ring:             #0c64b1;
+
+    --pnk-shadow-sm: 0 1px 2px rgba(20, 30, 45, 0.08);
+    --pnk-shadow:    0 6px 20px rgba(20, 30, 45, 0.12);
+    --pnk-shadow-lg: 0 18px 44px rgba(20, 30, 45, 0.18);
+
+    color-scheme: light;
+  }
+}
+
+/* Helles Pendant, explizit erzwungen ueber [data-theme="light"] -- gewinnt
+   in beide Richtungen gegen die Systemeinstellung. */
+[data-theme="light"] {
+  --pnk-bg:              #eef1f5;
+  --pnk-surface:         #ffffff;
+  --pnk-surface-alt:     #f8f9fb;
+  --pnk-surface-sunken:  #e4e8ec;
+  --pnk-surface-raised:  #e9edf2;
+  --pnk-elevated:        #ffffff;
+  --pnk-input-bg:        #ffffff;
+  --pnk-input-bg-alt:    #eef1f4;
+
+  --pnk-border:          #dde1e6;
+  --pnk-border-soft:     rgba(60, 70, 84, 0.22);
+  --pnk-border-strong:   #c5cbd2;
+  --pnk-border-table:    #d6dbe0;
+
+  --pnk-text:            #1c2126;
+  --pnk-text-muted:      #5b6470;
+  --pnk-text-dim:        #889098;
+  --pnk-text-link:       #0f66c2;
+  --pnk-text-on-accent:  #ffffff;
+  --pnk-selected-text:   #0b3a63;
+
+  --pnk-accent:            #1373d9;
+  --pnk-accent-hover:      #0f63bd;
+  --pnk-accent-disabled:   #b7c2cc;
+  --pnk-accent-warm:       #e08e00;
+  --pnk-accent-warm-strong:#b8730a;
+
+  --pnk-danger:          #d1453f;
+  --pnk-danger-hover:    #b53832;
+
+  --pnk-success:         #1e8e3e;
+  --pnk-warning:         #a6720a;
+
+  --pnk-selected-bg:            #d8e8fb;
+  --pnk-selected-border:        #a9cdf2;
+  --pnk-selected-bg-unfocused:  #e7eef6;
+  --pnk-hover-bg:               #eef2f6;
+  --pnk-focus-ring:             #0c64b1;
+
+  --pnk-shadow-sm: 0 1px 2px rgba(20, 30, 45, 0.08);
+  --pnk-shadow:    0 6px 20px rgba(20, 30, 45, 0.12);
+  --pnk-shadow-lg: 0 18px 44px rgba(20, 30, 45, 0.18);
+
+  color-scheme: light;
+}
+
+/* ==========================================================================
+   2. RESET / BASIS
+   ========================================================================== */
+
+.pnk-root, .pnk-app {
+  background: var(--pnk-bg);
+  color: var(--pnk-text);
+  font-family: var(--pnk-font);
+  font-size: var(--pnk-font-size);
+  line-height: var(--pnk-line-height);
+}
+
+.pnk-root *, .pnk-app * {
+  box-sizing: border-box;
+}
+
+.pnk-root a, .pnk-app a {
+  color: var(--pnk-text-link);
+  text-decoration: none;
+}
+.pnk-root a:hover, .pnk-app a:hover {
+  text-decoration: underline;
+}
+
+.pnk-root ::selection, .pnk-app ::selection {
+  background: var(--pnk-selected-bg);
+  color: var(--pnk-text-on-accent);
+}
+
+/* Scrollbars */
+.pnk-root, .pnk-app {
+  scrollbar-color: var(--pnk-border-strong) var(--pnk-surface);
+  scrollbar-width: thin;
+}
+.pnk-root ::-webkit-scrollbar, .pnk-app ::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+.pnk-root ::-webkit-scrollbar-track, .pnk-app ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.pnk-root ::-webkit-scrollbar-thumb, .pnk-app ::-webkit-scrollbar-thumb {
+  background-color: var(--pnk-border-strong);
+  border-radius: var(--pnk-radius-pill);
+  border: 3px solid var(--pnk-surface);
+}
+.pnk-root ::-webkit-scrollbar-thumb:hover, .pnk-app ::-webkit-scrollbar-thumb:hover {
+  background-color: #5a5e63;
+}
+
+/* ==========================================================================
+   3. LAYOUT-GERUEST (Rail + Sidebar + Topbar + Main + Statusbar)
+   ========================================================================== */
+
+.pnk-app {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  grid-template-rows: auto 1fr auto;
+  grid-template-areas:
+    "rail topbar topbar"
+    "rail sidebar main"
+    "rail statusbar statusbar";
+  height: 100vh;
+}
+
+.pnk-rail {
+  grid-area: rail;
+  background: var(--pnk-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--pnk-space-2);
+  padding: var(--pnk-space-3) var(--pnk-space-2);
+}
+
+.pnk-rail-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  border: 2px solid var(--pnk-border-soft);
+  background: #040404;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color var(--pnk-transition), border-color var(--pnk-transition);
+}
+.pnk-rail-btn:hover {
+  background: #000;
+  border-color: rgba(189, 189, 189, 0.88);
+}
+.pnk-rail-btn.is-active {
+  background: #000;
+  border-color: var(--pnk-accent-warm-strong);
+}
+
+.pnk-topbar {
+  grid-area: topbar;
+  background: var(--pnk-surface-raised);
+  border-bottom: 1px solid var(--pnk-border);
+  display: flex;
+  align-items: center;
+  gap: var(--pnk-space-3);
+  padding: var(--pnk-space-2) var(--pnk-space-4);
+}
+
+.pnk-sidebar {
+  grid-area: sidebar;
+  background: var(--pnk-surface-alt);
+  border-right: 1px solid var(--pnk-border);
+  overflow-y: auto;
+  padding: var(--pnk-space-2);
+  min-width: 220px;
+}
+
+.pnk-main {
+  grid-area: main;
+  background: var(--pnk-surface);
+  overflow-y: auto;
+  padding: var(--pnk-space-4);
+}
+
+.pnk-statusbar {
+  grid-area: statusbar;
+  background: var(--pnk-surface-raised);
+  border-top: 1px solid var(--pnk-border);
+  display: flex;
+  align-items: center;
+  gap: var(--pnk-space-2);
+  padding: var(--pnk-space-1) var(--pnk-space-3);
+  font-size: 0.85em;
+  color: var(--pnk-text-muted);
+}
+
+/* ==========================================================================
+   4. BUTTONS
+   ========================================================================== */
+
+.pnk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--pnk-space-2);
+  padding: 8px 16px;
+  border: 0;
+  border-radius: var(--pnk-radius);
+  background: var(--pnk-surface-raised);
+  color: var(--pnk-text);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--pnk-transition), color var(--pnk-transition), opacity var(--pnk-transition);
+}
+.pnk-btn:hover { background: #3a4045; }
+.pnk-btn:focus-visible { outline: 2px solid var(--pnk-focus-ring); outline-offset: 2px; }
+.pnk-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.pnk-btn--primary {
+  background: var(--pnk-accent);
+  color: var(--pnk-text-on-accent);
+}
+.pnk-btn--primary:hover { background: var(--pnk-accent-hover); }
+.pnk-btn--primary:disabled { background: var(--pnk-accent-disabled); }
+
+.pnk-btn--danger {
+  background: var(--pnk-danger);
+  color: var(--pnk-text-on-accent);
+}
+.pnk-btn--danger:hover { background: var(--pnk-danger-hover); }
+
+.pnk-btn--ghost {
+  background: transparent;
+  border: 1px solid var(--pnk-border-strong);
+}
+.pnk-btn--ghost:hover { background: rgba(255, 255, 255, 0.06); }
+
+.pnk-btn--flat {
+  background: transparent;
+}
+.pnk-btn--flat:hover { background: rgba(255, 255, 255, 0.12); }
+.pnk-btn--flat:active { background: rgba(255, 255, 255, 0.22); }
+
+.pnk-btn--icon {
+  padding: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.13);
+}
+.pnk-btn--icon:hover { background: rgba(255, 255, 255, 0.21); }
+
+.pnk-btn--sm { padding: 4px 10px; font-size: 0.85em; }
+.pnk-btn--lg { padding: 12px 22px; font-size: 1.05em; }
+
+/* ==========================================================================
+   5. FORMULARE
+   ========================================================================== */
+
+.pnk-label {
+  display: block;
+  margin-bottom: var(--pnk-space-1);
+  color: var(--pnk-text-muted);
+  font-size: 0.9em;
+}
+
+.pnk-input,
+.pnk-textarea,
+.pnk-select {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--pnk-input-bg);
+  color: var(--pnk-text);
+  border: 1px solid var(--pnk-border-strong);
+  border-radius: var(--pnk-radius-sm);
+  font: inherit;
+  transition: border-color var(--pnk-transition), background-color var(--pnk-transition);
+}
+.pnk-input::placeholder, .pnk-textarea::placeholder { color: var(--pnk-text-dim); }
+
+.pnk-input:focus,
+.pnk-textarea:focus,
+.pnk-select:focus {
+  outline: none;
+  border-color: var(--pnk-focus-ring);
+  background: #000;
+}
+
+.pnk-textarea { resize: vertical; min-height: 6em; }
+
+.pnk-search {
+  background: var(--pnk-input-bg-alt);
+  border: 1px solid transparent;
+}
+.pnk-search:hover { background: #34393d; }
+.pnk-search:focus { border-color: var(--pnk-focus-ring); background: var(--pnk-input-bg); }
+
+/* Checkbox / Radio */
+.pnk-checkbox, .pnk-radio {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--pnk-border-soft);
+  background: var(--pnk-input-bg);
+  cursor: pointer;
+  display: inline-block;
+  vertical-align: middle;
+  position: relative;
+  transition: border-color var(--pnk-transition), background-color var(--pnk-transition);
+}
+.pnk-checkbox { border-radius: 4px; }
+.pnk-radio { border-radius: 50%; }
+
+.pnk-checkbox:hover, .pnk-radio:hover { border-color: rgba(240, 250, 255, 0.51); }
+
+.pnk-checkbox:checked, .pnk-radio:checked {
+  background: var(--pnk-accent);
+  border-color: var(--pnk-accent);
+}
+.pnk-checkbox:checked::after {
+  content: "";
+  position: absolute;
+  left: 5px; top: 1px;
+  width: 5px; height: 9px;
+  border: solid #fff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.pnk-radio:checked::after {
+  content: "";
+  position: absolute;
+  left: 4px; top: 4px;
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #fff;
+}
+
+.pnk-checkbox:disabled, .pnk-radio:disabled {
+  background: rgba(36, 40, 43, 0.67);
+  border-color: rgba(183, 192, 196, 0.37);
+  cursor: not-allowed;
+}
+
+.pnk-field-row {
+  display: flex;
+  align-items: center;
+  gap: var(--pnk-space-2);
+}
+
+/* ==========================================================================
+   6. PANELS / CARDS
+   ========================================================================== */
+
+.pnk-card {
+  background: var(--pnk-surface);
+  border: 1px solid var(--pnk-border);
+  border-radius: var(--pnk-radius);
+  padding: var(--pnk-space-4);
+}
+
+.pnk-card--raised {
+  background: var(--pnk-surface-raised);
+  box-shadow: var(--pnk-shadow-sm);
+}
+
+.pnk-card__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--pnk-space-3);
+  padding-bottom: var(--pnk-space-2);
+  border-bottom: 1px solid var(--pnk-border);
+}
+
+.pnk-card__title {
+  font-weight: 600;
+  color: var(--pnk-text);
+}
+
+/* ==========================================================================
+   7. NAVIGATION / TABS
+   ========================================================================== */
+
+.pnk-nav { display: flex; flex-direction: column; gap: 2px; }
+
+.pnk-nav-item {
+  display: flex;
+  align-items: center;
+  gap: var(--pnk-space-2);
+  padding: 7px 10px;
+  border-radius: var(--pnk-radius-sm);
+  color: var(--pnk-text);
+  cursor: pointer;
+  transition: background-color var(--pnk-transition);
+}
+.pnk-nav-item:hover { background: var(--pnk-hover-bg); text-decoration: none; }
+.pnk-nav-item.is-active {
+  background: var(--pnk-selected-bg);
+  color: var(--pnk-selected-text);
+}
+
+.pnk-tabs {
+  display: flex;
+  gap: 2px;
+  background: #4e4e56;
+  border-radius: var(--pnk-radius-sm);
+  padding: 3px;
+}
+.pnk-tab {
+  padding: 6px 14px;
+  border-radius: var(--pnk-radius-sm) var(--pnk-radius-sm) 0 0;
+  color: var(--pnk-text);
+  cursor: pointer;
+  transition: background-color var(--pnk-transition);
+}
+.pnk-tab:hover { background: #71717a; }
+.pnk-tab.is-active { background: #27272a; }
+
+/* ==========================================================================
+   8. LISTEN / TABELLEN
+   ========================================================================== */
+
+.pnk-list { display: flex; flex-direction: column; }
+
+.pnk-list-item {
+  padding: 8px 12px;
+  border-radius: var(--pnk-radius-sm);
+  cursor: pointer;
+  transition: background-color var(--pnk-transition);
+}
+.pnk-list-item:hover { background: var(--pnk-hover-bg); }
+.pnk-list-item.is-selected {
+  background: var(--pnk-selected-bg);
+  color: var(--pnk-selected-text);
+}
+.pnk-list-item.is-selected.is-unfocused {
+  background: var(--pnk-selected-bg-unfocused);
+}
+
+.pnk-table { width: 100%; border-collapse: collapse; }
+.pnk-table th {
+  background: var(--pnk-surface-raised);
+  color: var(--pnk-text-link);
+  text-align: left;
+  padding: 8px 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--pnk-border-table);
+}
+.pnk-table th:hover { background: #40464d; }
+.pnk-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--pnk-border);
+}
+.pnk-table tr:hover td { background: var(--pnk-hover-bg); }
+.pnk-table tr.is-selected td { background: var(--pnk-selected-bg); color: var(--pnk-selected-text); }
+
+/* ==========================================================================
+   9. BADGES / ALERTS
+   ========================================================================== */
+
+.pnk-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 9px;
+  border-radius: var(--pnk-radius-pill);
+  font-size: 0.8em;
+  font-weight: 600;
+  background: var(--pnk-surface-raised);
+  color: var(--pnk-text);
+}
+.pnk-badge--accent { background: var(--pnk-accent); color: var(--pnk-text-on-accent); }
+.pnk-badge--warm   { background: var(--pnk-accent-warm); color: #1e2022; }
+.pnk-badge--danger { background: var(--pnk-danger); color: var(--pnk-text-on-accent); }
+
+.pnk-alert {
+  padding: var(--pnk-space-3) var(--pnk-space-4);
+  border-radius: var(--pnk-radius);
+  border: 1px solid var(--pnk-border);
+  background: var(--pnk-surface-raised);
+  color: var(--pnk-text);
+}
+.pnk-alert--info    { border-color: var(--pnk-accent); }
+.pnk-alert--danger   { border-color: var(--pnk-danger); }
+.pnk-alert--warning { border-color: var(--pnk-warning); }
+.pnk-alert--success { border-color: var(--pnk-success); }
+
+/* ==========================================================================
+   10. DIALOG / MODAL
+   ========================================================================== */
+
+.pnk-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(40, 45, 51, 0.68);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.pnk-modal {
+  background: var(--pnk-surface-alt);
+  border-radius: var(--pnk-radius-lg);
+  box-shadow: var(--pnk-shadow-lg);
+  min-width: 320px;
+  max-width: 90vw;
+  padding: var(--pnk-space-5);
+}
+
+.pnk-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--pnk-space-4);
+}
+
+.pnk-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--pnk-space-2);
+  margin-top: var(--pnk-space-5);
+}
+
+/* ==========================================================================
+   11. DROPDOWN-MENUES
+   ========================================================================== */
+
+/* Basiert auf <details>/<summary> -> funktioniert ohne JavaScript, ist per
+   Tastatur bedienbar und schliesst sich beim Klick auf den Trigger von
+   selbst. Optional: ein paar Zeilen JS fuer "Klick ausserhalb schliesst"
+   und "nur ein Dropdown gleichzeitig offen", siehe Kommentar am Dateiende.
+
+   <details class="pnk-dropdown">
+     <summary class="pnk-btn pnk-btn--ghost">Optionen</summary>
+     <div class="pnk-dropdown-menu">
+       <div class="pnk-dropdown-label">Aktionen</div>
+       <div class="pnk-dropdown-item">Bearbeiten</div>
+       <div class="pnk-dropdown-item">Duplizieren</div>
+       <div class="pnk-dropdown-divider"></div>
+       <div class="pnk-dropdown-item is-danger">Löschen</div>
+     </div>
+   </details>
+
+   Wer lieber mit eigenem JS/State arbeitet (React, Vue, Alpine, ...): eine
+   simple <div class="pnk-dropdown"> mit <div class="pnk-dropdown-menu"> und
+   der Klasse "is-open" auf dem Wrapper funktioniert genauso. */
+
+.pnk-dropdown {
+  position: relative;
+  display: inline-block;
+}
+
+.pnk-dropdown > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.pnk-dropdown > summary::-webkit-details-marker { display: none; }
+.pnk-dropdown > summary::marker { content: ""; }
+
+.pnk-dropdown-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 100;
+  min-width: 200px;
+  background: var(--pnk-elevated);
+  border: 1px solid var(--pnk-border);
+  border-radius: var(--pnk-radius);
+  box-shadow: var(--pnk-shadow);
+  padding: 6px;
+}
+
+/* <details>-Variante: der Browser steuert das Anzeigen ueber [open]. */
+.pnk-dropdown:not([open]) > .pnk-dropdown-menu { display: none; }
+
+/* Div/JS-Variante: standardmaessig verborgen, "is-open" zeigt sie. */
+div.pnk-dropdown > .pnk-dropdown-menu { display: none; }
+div.pnk-dropdown.is-open > .pnk-dropdown-menu { display: block; }
+
+.pnk-dropdown-menu--right { left: auto; right: 0; }
+
+.pnk-dropdown-label {
+  padding: 6px 10px 4px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--pnk-text-dim);
+}
+
+.pnk-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: var(--pnk-radius-sm);
+  color: var(--pnk-text);
+  font-size: 13px;
+  cursor: pointer;
+  transition: background-color var(--pnk-transition);
+}
+.pnk-dropdown-item:hover { background: var(--pnk-hover-bg); }
+.pnk-dropdown-item.is-danger { color: var(--pnk-danger); }
+.pnk-dropdown-item.is-danger:hover { background: rgba(229, 106, 106, 0.14); }
+.pnk-dropdown-item.is-disabled { opacity: 0.5; cursor: not-allowed; pointer-events: none; }
+
+.pnk-dropdown-divider {
+  height: 1px;
+  background: var(--pnk-border);
+  margin: 6px 2px;
+}
+
+/* ==========================================================================
+   12. TOASTS
+   ========================================================================== */
+
+/* Container fest positionieren (einmal pro Seite), einzelne Toasts per JS
+   davor einfuegen und nach ein paar Sekunden wieder entfernen:
+
+   <div class="pnk-toast-stack" id="toasts"></div>
+
+   <div class="pnk-toast pnk-toast--success">
+     <div class="pnk-toast__icon">✓</div>
+     <div class="pnk-toast__body">
+       <div class="pnk-toast__title">Gespeichert</div>
+       <div class="pnk-toast__message">Alle Änderungen wurden übernommen.</div>
+     </div>
+     <button class="pnk-toast__close" aria-label="Schließen">×</button>
+   </div> */
+
+.pnk-toast-stack {
+  position: fixed;
+  bottom: var(--pnk-space-5);
+  right: var(--pnk-space-5);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 360px;
+}
+
+.pnk-toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--pnk-elevated);
+  border: 1px solid var(--pnk-border);
+  border-left: 3px solid var(--pnk-accent);
+  border-radius: var(--pnk-radius);
+  box-shadow: var(--pnk-shadow);
+  padding: 12px 12px 12px 14px;
+  color: var(--pnk-text);
+  animation: pnk-toast-in 180ms ease;
+}
+.pnk-toast--success { border-left-color: var(--pnk-success); }
+.pnk-toast--warning { border-left-color: var(--pnk-warning); }
+.pnk-toast--danger  { border-left-color: var(--pnk-danger); }
+
+.pnk-toast__icon {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--pnk-surface-raised);
+  font-size: 12px;
+  line-height: 1;
+}
+.pnk-toast--success .pnk-toast__icon { color: var(--pnk-success); }
+.pnk-toast--warning .pnk-toast__icon { color: var(--pnk-warning); }
+.pnk-toast--danger  .pnk-toast__icon { color: var(--pnk-danger); }
+
+.pnk-toast__body { flex: 1; min-width: 0; }
+.pnk-toast__title { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+.pnk-toast__message { font-size: 12.5px; color: var(--pnk-text-muted); }
+
+.pnk-toast__close {
+  flex: none;
+  background: none;
+  border: 0;
+  color: var(--pnk-text-dim);
+  cursor: pointer;
+  font-size: 15px;
+  line-height: 1;
+  padding: 2px;
+  border-radius: 4px;
+}
+.pnk-toast__close:hover { color: var(--pnk-text); background: var(--pnk-hover-bg); }
+
+@keyframes pnk-toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .pnk-toast { animation: none; }
+}
+
+/* ==========================================================================
+   13. UTILITIES
+   ========================================================================== */
+
+.pnk-text-muted { color: var(--pnk-text-muted); }
+.pnk-text-link  { color: var(--pnk-text-link); }
+.pnk-text-accent { color: var(--pnk-accent-warm); }
+.pnk-text-danger { color: var(--pnk-danger); }
+
+.pnk-bg-surface { background: var(--pnk-surface); }
+.pnk-bg-surface-alt { background: var(--pnk-surface-alt); }
+
+.pnk-rounded    { border-radius: var(--pnk-radius); }
+.pnk-rounded-sm { border-radius: var(--pnk-radius-sm); }
+.pnk-rounded-lg { border-radius: var(--pnk-radius-lg); }
+
+.pnk-flex        { display: flex; }
+.pnk-flex-col    { display: flex; flex-direction: column; }
+.pnk-items-center{ align-items: center; }
+.pnk-justify-between { justify-content: space-between; }
+.pnk-gap-1 { gap: var(--pnk-space-1); }
+.pnk-gap-2 { gap: var(--pnk-space-2); }
+.pnk-gap-3 { gap: var(--pnk-space-3); }
+.pnk-gap-4 { gap: var(--pnk-space-4); }
+
+/* ==========================================================================
+   OPTIONALE JS-HELFER (kein Teil des CSS, zum Einfuegen bei Bedarf)
+   ==========================================================================
+
+   -- Theme umschalten & merken -------------------------------------------
+   function setPnkTheme(theme) {          // theme: "light" | "dark" | null
+     if (theme) document.documentElement.setAttribute('data-theme', theme);
+     else document.documentElement.removeAttribute('data-theme');
+     try { localStorage.setItem('pnk-theme', theme || ''); } catch (e) {}
+   }
+   try {
+     const saved = localStorage.getItem('pnk-theme');
+     if (saved) document.documentElement.setAttribute('data-theme', saved);
+   } catch (e) {}
+
+   -- Dropdowns: Klick ausserhalb schliesst, nur eins offen ---------------
+   document.addEventListener('click', (e) => {
+     document.querySelectorAll('.pnk-dropdown[open]').forEach((dd) => {
+       if (!dd.contains(e.target)) dd.removeAttribute('open');
+     });
+   });
+   document.querySelectorAll('.pnk-dropdown').forEach((dd) => {
+     dd.addEventListener('toggle', () => {
+       if (dd.open) {
+         document.querySelectorAll('.pnk-dropdown[open]').forEach((other) => {
+           if (other !== dd) other.removeAttribute('open');
+         });
+       }
+     });
+   });
+
+   -- Toast anzeigen (Container: <div class="pnk-toast-stack" id="toasts">) -
+   function showPnkToast({ title, message, variant = '', icon = 'ℹ', duration = 4000 }) {
+     const stack = document.getElementById('toasts');
+     const el = document.createElement('div');
+     el.className = 'pnk-toast' + (variant ? ' pnk-toast--' + variant : '');
+     el.innerHTML =
+       '<div class="pnk-toast__icon">' + icon + '</div>' +
+       '<div class="pnk-toast__body">' +
+         '<div class="pnk-toast__title"></div>' +
+         '<div class="pnk-toast__message"></div>' +
+       '</div>' +
+       '<button class="pnk-toast__close" aria-label="Schließen">×</button>';
+     el.querySelector('.pnk-toast__title').textContent = title;
+     el.querySelector('.pnk-toast__message').textContent = message;
+     const remove = () => el.remove();
+     el.querySelector('.pnk-toast__close').addEventListener('click', remove);
+     if (duration) setTimeout(remove, duration);
+     stack.appendChild(el);
+   }
+   ========================================================================== */

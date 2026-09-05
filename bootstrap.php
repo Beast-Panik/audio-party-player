@@ -1,0 +1,76 @@
+<?php
+
+declare(strict_types=1);
+
+// Einfacher Autoloader ohne Composer: App\Foo\Bar -> src/Foo/Bar.php
+spl_autoload_register(function (string $class): void {
+    if (!str_starts_with($class, 'App\\')) {
+        return;
+    }
+    $relative = substr($class, strlen('App\\'));
+    $path = __DIR__ . '/src/' . str_replace('\\', '/', $relative) . '.php';
+    if (is_file($path)) {
+        require $path;
+    }
+});
+
+/**
+ * Ermittelt den URL-Pfad, unter dem das Projekt-Wurzelverzeichnis erreichbar
+ * ist - auch wenn die App nicht im Domain-Root, sondern in einem
+ * Unterordner liegt (z.B. https://host.tld/party/). Wird von Seiten in
+ * admin/ und api/ aus aufgerufen, daher wird eine bekannte Unterordner-Ebene
+ * abgeschnitten.
+ */
+function app_base_path(): string
+{
+    $script = $_SERVER['SCRIPT_NAME'] ?? '/index.php';
+    $dir = str_replace('\\', '/', dirname($script));
+    foreach (['/admin', '/api'] as $sub) {
+        if ($dir === $sub || str_ends_with($dir, $sub)) {
+            $dir = substr($dir, 0, -strlen($sub));
+            break;
+        }
+    }
+    return rtrim($dir, '/');
+}
+
+define('APP_BASE_PATH', app_base_path());
+
+/** Baut eine root-relative URL innerhalb der App, egal in welchem Unterordner sie liegt. */
+function app_url(string $path = ''): string
+{
+    $path = ltrim($path, '/');
+    return APP_BASE_PATH . '/' . $path;
+}
+
+use App\Config;
+
+if (!Config::isInstalled()) {
+    $script = basename($_SERVER['SCRIPT_NAME'] ?? '');
+    if ($script !== 'install.php') {
+        header('Location: ' . app_url('install.php'));
+        exit;
+    }
+    return;
+}
+
+error_reporting(E_ALL);
+ini_set('display_errors', Config::get('debug', false) ? '1' : '0');
+date_default_timezone_set('Europe/Berlin');
+
+$sessionName = Config::get('session_name', 'app_sess');
+if (session_status() !== PHP_SESSION_ACTIVE) {
+    session_name($sessionName);
+    $secure = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off');
+    session_set_cookie_params([
+        'lifetime' => 0,
+        // Bewusst auf die ganze App-Basis (nicht auf das Unterverzeichnis
+        // des jeweiligen Scripts) beschraenkt - sonst faellt die Session
+        // zwischen root-, admin/- und api/-Seiten auseinander.
+        'path' => (APP_BASE_PATH === '' ? '/' : APP_BASE_PATH . '/'),
+        'secure' => $secure,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    session_start();
+}
