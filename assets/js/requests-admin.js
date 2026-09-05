@@ -85,5 +85,8 @@
   });
 
   load();
-  setInterval(load, 10000);
+  // Interval fuer Aufraeumen bei Soft-Navigation registrieren (siehe app.js),
+  // sonst wuerde bei jedem erneuten Besuch dieser Seite ein weiterer,
+  // nie endender Abfrage-Intervall dazukommen.
+  (window.APP_PAGE_TIMERS = window.APP_PAGE_TIMERS || []).push(setInterval(load, 10000));
 })();

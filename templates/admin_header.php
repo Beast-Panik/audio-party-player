@@ -132,4 +132,4 @@ if (!function_exists('nav_item')) {
     <?php endif; ?>
   </aside>
 
-  <main class="pnk-main app-content" style="grid-area:main;">
+  <main class="pnk-main app-content" id="app-main" style="grid-area:main;">
