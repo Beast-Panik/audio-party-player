@@ -15,6 +15,44 @@
   display: inline-block;
 }
 
+/* Sidebar-Menuepunkte als Buttons mit Icon statt reiner Textlinks. */
+.app-nav-btn {
+  background: var(--pnk-surface-raised);
+  border: 1px solid var(--pnk-border);
+}
+.app-nav-btn:hover { background: #3a4045; }
+.app-nav-btn.is-active { border-color: var(--pnk-accent); }
+.app-nav-icon {
+  font-size: 15px;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+.app-nav-label { flex: 1; }
+
+/* Accordion fuer Einstellungsgruppen - natives <details>/<summary>, kein JS noetig. */
+.app-accordion {
+  margin-bottom: 14px;
+}
+.app-accordion > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.app-accordion > summary::-webkit-details-marker { display: none; }
+.app-accordion > summary::marker { content: ""; }
+.app-accordion__title {
+  display: flex;
+  align-items: center;
+  gap: var(--pnk-space-2);
+}
+.app-accordion__chevron {
+  color: var(--pnk-text-muted);
+  display: inline-block;
+  transition: transform 140ms ease;
+}
+.app-accordion[open] .app-accordion__chevron { transform: rotate(90deg); }
+.app-accordion__body { padding-top: 2px; }
+
 .app-nowplaying[hidden] {
   display: none;
 }

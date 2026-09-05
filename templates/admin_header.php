@@ -11,10 +11,11 @@ $activeNav = $activeNav ?? '';
 $appName = (new SettingRepository())->get('app_name', 'Party Player - pan1k.de');
 
 if (!function_exists('nav_item')) {
-    function nav_item(string $key, string $href, string $label, string $active): string
+    function nav_item(string $key, string $href, string $label, string $active, string $icon = ''): string
     {
-        $cls = 'pnk-nav-item' . ($key === $active ? ' is-active' : '');
-        return '<a class="' . $cls . '" href="' . htmlspecialchars($href, ENT_QUOTES) . '">' . htmlspecialchars($label, ENT_QUOTES) . '</a>';
+        $cls = 'pnk-nav-item app-nav-btn' . ($key === $active ? ' is-active' : '');
+        $iconHtml = $icon !== '' ? '<span class="app-nav-icon" aria-hidden="true">' . htmlspecialchars($icon, ENT_QUOTES) . '</span>' : '';
+        return '<a class="' . $cls . '" href="' . htmlspecialchars($href, ENT_QUOTES) . '">' . $iconHtml . '<span class="app-nav-label">' . htmlspecialchars($label, ENT_QUOTES) . '</span></a>';
     }
 }
 ?>
@@ -42,15 +43,15 @@ if (!function_exists('nav_item')) {
   <aside class="pnk-sidebar">
     <h6 style="font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--pnk-text-dim);margin:4px 8px 4px;font-weight:600;">Party</h6>
     <nav class="pnk-nav">
-      <?= nav_item('player', app_url('player.php'), 'Player', $activeNav) ?>
-      <?= nav_item('requests', app_url('admin/requests.php'), 'Wunschliste', $activeNav) ?>
+      <?= nav_item('player', app_url('player.php'), 'Player', $activeNav, '🎧') ?>
+      <?= nav_item('requests', app_url('admin/requests.php'), 'Wunschliste', $activeNav, '🎶') ?>
     </nav>
     <h6 style="font-size:10.5px;text-transform:uppercase;letter-spacing:.09em;color:var(--pnk-text-dim);margin:16px 8px 4px;font-weight:600;">Verwaltung</h6>
     <nav class="pnk-nav">
-      <?= nav_item('dashboard', app_url('admin/index.php'), 'Uebersicht', $activeNav) ?>
-      <?= nav_item('library', app_url('admin/library.php'), 'Bibliothek', $activeNav) ?>
-      <?= nav_item('users', app_url('admin/users.php'), 'Benutzer', $activeNav) ?>
-      <?= nav_item('settings', app_url('admin/settings.php'), 'Einstellungen', $activeNav) ?>
+      <?= nav_item('dashboard', app_url('admin/index.php'), 'Uebersicht', $activeNav, '📊') ?>
+      <?= nav_item('library', app_url('admin/library.php'), 'Bibliothek', $activeNav, '💿') ?>
+      <?= nav_item('users', app_url('admin/users.php'), 'Benutzer', $activeNav, '👤') ?>
+      <?= nav_item('settings', app_url('admin/settings.php'), 'Einstellungen', $activeNav, '⚙️') ?>
     </nav>
   </aside>
 
