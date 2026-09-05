@@ -2,7 +2,9 @@
 
 require __DIR__ . '/bootstrap.php';
 
+use App\Auth;
 use App\Config;
+use App\Csrf;
 use App\Database;
 use App\Repositories\UserRepository;
 
@@ -64,6 +66,7 @@ if (!Config::isInstalled()) {
                     ? Database::connectWith('mysql', $mysql)
                     : Database::connectWith('sqlite', [], $dataDir . '/database.sqlite');
                 Database::ensureSchemaOn($pdo, $driver);
+                Database::markSchemaVersion($pdo, Database::SCHEMA_VERSION);
 
                 // App-Name direkt in die Settings-Tabelle uebernehmen (die
                 // Seiten lesen den Namen von dort, nicht aus config.php).
@@ -169,6 +172,48 @@ if ($userRepo->count() === 0) {
     $body .= '</form>';
 
     render_page('Schritt 2', $body);
+    exit;
+}
+
+// ---------------------------------------------------------------------
+// Stufe 3: Datenbank-Update nach einem Code-Update (neue Schema-Version)
+// ---------------------------------------------------------------------
+if (Database::needsUpdate()) {
+    if (!Auth::isLoggedIn()) {
+        header('Location: ' . app_url('login.php'));
+        exit;
+    }
+
+    $error = null;
+    $updated = false;
+    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+        Csrf::requireValid();
+        try {
+            $pdo = Database::get();
+            Database::ensureSchemaOn($pdo, Database::driver());
+            Database::markSchemaVersion($pdo, Database::SCHEMA_VERSION);
+            $updated = true;
+        } catch (\Throwable $e) {
+            $error = 'Update fehlgeschlagen: ' . $e->getMessage();
+        }
+    }
+
+    if ($updated) {
+        render_page('Update abgeschlossen', '<div class="pnk-alert pnk-alert--success" style="margin-bottom:16px;">Datenbank erfolgreich aktualisiert.</div>'
+            . '<a class="pnk-btn pnk-btn--primary" style="width:100%; display:block; text-align:center;" href="' . app_url('admin/index.php') . '">Weiter zur Uebersicht</a>');
+        exit;
+    }
+
+    $body = '<p class="pnk-text-muted">Diese Version von Party Player - pan1k.de braucht ein paar Anpassungen an der Datenbank, bevor es weitergeht.</p>';
+    if ($error) {
+        $body .= '<div class="pnk-alert pnk-alert--danger" style="margin-bottom:16px;">' . htmlspecialchars($error, ENT_QUOTES) . '</div>';
+    }
+    $body .= '<form method="post" action="' . app_url('install.php') . '">';
+    $body .= Csrf::field();
+    $body .= '<button class="pnk-btn pnk-btn--primary" type="submit" style="width:100%; margin-top:8px;">Datenbank jetzt aktualisieren</button>';
+    $body .= '</form>';
+
+    render_page('Update erforderlich', $body);
     exit;
 }
 

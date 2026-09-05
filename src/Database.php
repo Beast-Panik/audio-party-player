@@ -4,20 +4,65 @@ namespace App;
 
 /**
  * Duenner PDO-Wrapper. Unterstuetzt SQLite (Standard, keine Einrichtung
- * noetig) und MySQL/MariaDB. Legt beim ersten Zugriff fehlende Tabellen an.
+ * noetig) und MySQL/MariaDB. Tabellen/Spalten werden bei der Einrichtung
+ * bzw. ueber den Update-Schritt in install.php angelegt/migriert (siehe
+ * SCHEMA_VERSION), nicht mehr automatisch bei jeder Anfrage.
  */
 final class Database
 {
     private static ?\PDO $pdo = null;
     private static ?string $driver = null;
 
+    /**
+     * Schema-Version des Codes. Bei strukturellen Aenderungen (neue Spalten/
+     * Tabellen) hier hochzaehlen und die Migration in schemaStatements()/
+     * ensureSchemaOn() ergaenzen. Die Datenbank wird NICHT mehr automatisch
+     * bei jeder Anfrage migriert - stattdessen erkennt bootstrap.php eine
+     * hoehere Code-Version, schickt einen angemeldeten Admin automatisch zu
+     * install.php und die Migration laeuft dort erst nach einem Klick.
+     */
+    public const SCHEMA_VERSION = 1;
+
     public static function get(): \PDO
     {
         if (self::$pdo === null) {
             self::connect();
-            self::ensureSchema();
         }
         return self::$pdo;
+    }
+
+    /** Aktuell in der Datenbank hinterlegte Schema-Version. */
+    public static function installedSchemaVersion(): int
+    {
+        try {
+            $stmt = self::get()->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
+            $stmt->execute(['schema_version']);
+            $row = $stmt->fetch();
+            // Fehlender Eintrag = Installation von vor Einfuehrung dieser
+            // Versionspruefung. Deren Schema wurde bis dahin bei jeder
+            // Anfrage automatisch auf den damals aktuellen Stand (= Version 1)
+            // gebracht, entspricht also bereits Version 1.
+            return $row ? (int) $row['setting_value'] : 1;
+        } catch (\Throwable $e) {
+            return self::SCHEMA_VERSION;
+        }
+    }
+
+    public static function markSchemaVersion(\PDO $pdo, int $version): void
+    {
+        $stmt = $pdo->prepare('SELECT setting_key FROM settings WHERE setting_key = ?');
+        $stmt->execute(['schema_version']);
+        if ($stmt->fetch()) {
+            $pdo->prepare('UPDATE settings SET setting_value = ? WHERE setting_key = ?')->execute([(string) $version, 'schema_version']);
+        } else {
+            $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)')->execute(['schema_version', (string) $version]);
+        }
+    }
+
+    /** true, wenn die Code-Version eine neuere Schema-Version braucht als aktuell in der DB steht. */
+    public static function needsUpdate(): bool
+    {
+        return Config::isInstalled() && self::installedSchemaVersion() < self::SCHEMA_VERSION;
     }
 
     public static function driver(): string
@@ -119,11 +164,6 @@ final class Database
         if (!$exists) {
             $pdo->exec("ALTER TABLE {$table} ADD COLUMN {$column} {$definition}");
         }
-    }
-
-    private static function ensureSchema(): void
-    {
-        self::ensureSchemaOn(self::$pdo, self::driver());
     }
 
     /**

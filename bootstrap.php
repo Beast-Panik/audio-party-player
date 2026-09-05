@@ -43,7 +43,9 @@ function app_url(string $path = ''): string
     return APP_BASE_PATH . '/' . $path;
 }
 
+use App\Auth;
 use App\Config;
+use App\Database;
 
 if (!Config::isInstalled()) {
     $script = basename($_SERVER['SCRIPT_NAME'] ?? '');
@@ -73,4 +75,17 @@ if (session_status() !== PHP_SESSION_ACTIVE) {
         'samesite' => 'Lax',
     ]);
     session_start();
+}
+
+// Nach einem Datei-Update kann die Datenbank noch auf dem alten Stand
+// sein. Ein angemeldeter Admin wird dann automatisch zum Installer
+// geschickt, der das Update per Klick nachholt (siehe install.php,
+// Database::SCHEMA_VERSION). API-Endpunkte werden bewusst ausgenommen,
+// da dort ein Redirect nur die JSON-Antworten des laufenden Players
+// kaputt machen wuerde, ohne dass sich am Schema etwas aendert.
+$scriptName = basename($_SERVER['SCRIPT_NAME'] ?? '');
+$isApiRequest = str_contains($_SERVER['SCRIPT_NAME'] ?? '', '/api/');
+if (!$isApiRequest && !in_array($scriptName, ['install.php', 'logout.php'], true) && Auth::isLoggedIn() && Database::needsUpdate()) {
+    header('Location: ' . app_url('install.php'));
+    exit;
 }
