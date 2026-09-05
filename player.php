@@ -32,20 +32,26 @@ require __DIR__ . '/templates/admin_header.php';
   <div id="queue-list"><div class="app-empty">Lade Wünsche…</div></div>
 </div>
 
-<div class="pnk-card" style="margin-bottom:20px; display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
-  <div>
-    <div style="font-weight:600;">Auto-DJ</div>
+<details class="pnk-card app-accordion" style="margin-bottom:20px;">
+  <summary class="pnk-card__header">
+    <span class="pnk-card__title app-accordion__title">
+      <span aria-hidden="true">🤖</span> Auto-DJ
+      <span class="pnk-badge" id="auto-dj-summary-badge">Aus</span>
+    </span>
+    <span class="app-accordion__chevron" aria-hidden="true">▸</span>
+  </summary>
+  <div class="app-accordion__body" style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
     <div class="pnk-text-muted" style="font-size:12.5px; max-width:60ch;">
       Wenn aktiv: Gast-Wünsche landen direkt in der Playlist (keine manuelle Freigabe
       noetig), der Player spielt die Playlist automatisch durch und sie wird bei
       weniger als 3 Songs automatisch mit noch nicht gespielten Tracks aufgefüllt.
     </div>
+    <label class="pnk-field-row" style="cursor:pointer;">
+      <input class="pnk-checkbox" type="checkbox" id="auto-dj-toggle">
+      <span id="auto-dj-label">Aus</span>
+    </label>
   </div>
-  <label class="pnk-field-row" style="cursor:pointer;">
-    <input class="pnk-checkbox" type="checkbox" id="auto-dj-toggle">
-    <span id="auto-dj-label">Aus</span>
-  </label>
-</div>
+</details>
 
 <div class="pnk-card">
   <div class="pnk-card__header">

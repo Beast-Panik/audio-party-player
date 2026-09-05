@@ -152,7 +152,7 @@ require __DIR__ . '/../templates/admin_header.php';
       </label>
       <label class="pnk-field-row" style="cursor:pointer;">
         <input class="pnk-checkbox" type="checkbox" name="countdown_enabled" value="1" <?= $countdownEnabled ? 'checked' : '' ?>>
-        <span>Countdown bis zum nächsten Track im Header anzeigen</span>
+        <span>Countdown bis zum nächsten Track im Menü anzeigen</span>
       </label>
       <button class="pnk-btn pnk-btn--primary" type="submit" style="margin-top:16px;">Speichern</button>
     </form>

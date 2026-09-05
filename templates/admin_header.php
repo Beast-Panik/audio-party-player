@@ -56,10 +56,6 @@ if (!function_exists('nav_item')) {
   <header class="pnk-topbar app-topbar">
     <div class="app-topbar-left">
       <button class="pnk-btn pnk-btn--ghost pnk-btn--icon app-sidebar-toggle" id="sidebar-toggle" title="Menü ein-/ausklappen" aria-label="Menü ein-/ausklappen">☰</button>
-      <div class="app-topbar-brand"><span class="dot"></span> <span class="app-topbar-brand__text"><?= htmlspecialchars($appName, ENT_QUOTES) ?></span></div>
-    </div>
-    <div class="app-topbar-center" id="countdown-wrap" hidden>
-      <div class="app-countdown" id="countdown-value">--:--</div>
     </div>
     <div class="app-topbar-right">
       <button class="pnk-btn pnk-btn--ghost pnk-btn--icon" id="theme-toggle" type="button" title="Theme wechseln" aria-label="Theme wechseln">🌙</button>
@@ -103,6 +99,9 @@ if (!function_exists('nav_item')) {
 
   <aside class="pnk-sidebar app-sidebar" id="sidebar">
     <button class="app-sidebar-collapse-toggle" id="sidebar-collapse-toggle" title="Menü einklappen" aria-label="Menü einklappen">‹</button>
+    <div class="app-sidebar-countdown" id="countdown-wrap" hidden>
+      <div class="app-countdown" id="countdown-value">--:--</div>
+    </div>
     <h6 class="app-sidebar-heading">Party</h6>
     <nav class="pnk-nav">
       <div class="app-nav-item-wrap">

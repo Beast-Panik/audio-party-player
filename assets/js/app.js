@@ -475,8 +475,13 @@
 
           var autoDjToggle = document.getElementById('auto-dj-toggle');
           var autoDjLabelEl = document.getElementById('auto-dj-label');
+          var autoDjBadge = document.getElementById('auto-dj-summary-badge');
           if (autoDjToggle) autoDjToggle.checked = autoDjEnabled;
           if (autoDjLabelEl) autoDjLabelEl.textContent = autoDjEnabled ? 'An' : 'Aus';
+          if (autoDjBadge) {
+            autoDjBadge.textContent = autoDjEnabled ? 'An' : 'Aus';
+            autoDjBadge.classList.toggle('pnk-badge--accent', autoDjEnabled);
+          }
 
           var playlistList = document.getElementById('playlist-list');
           if (playlistList && !isDragging) renderPlaylist(playlistList, playlistItems);
@@ -493,11 +498,16 @@
       var toggle = document.getElementById('auto-dj-toggle');
       if (!toggle) return;
       var label = document.getElementById('auto-dj-label');
+      var badge = document.getElementById('auto-dj-summary-badge');
       toggle.addEventListener('change', function () {
         postJson(api('api/playlist.php'), { action: 'set_auto_dj', enabled: toggle.checked, csrf_token: CSRF })
           .then(function (res) {
             autoDjEnabled = !!(res.body && res.body.auto_dj);
             if (label) label.textContent = autoDjEnabled ? 'An' : 'Aus';
+            if (badge) {
+              badge.textContent = autoDjEnabled ? 'An' : 'Aus';
+              badge.classList.toggle('pnk-badge--accent', autoDjEnabled);
+            }
             refreshPlaylist();
           });
       });

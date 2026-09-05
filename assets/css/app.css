@@ -1,20 +1,5 @@
 /* AudioPartyPlayer - kleine Ergaenzungen zum pan!k DaRk Designsystem */
 
-.app-topbar-brand {
-  font-weight: 700;
-  font-size: 16px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.app-topbar-brand .dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--pnk-accent-warm);
-  display: inline-block;
-}
-
 /* Bugfix: .pnk-app a:hover (Unterstreichung, Basis-Regel im Designsystem)
    hat durch das zusaetzliche Element "a" in seinem Selektor hoehere
    Spezifitaet als .pnk-btn:hover/.pnk-nav-item:hover und gewinnt daher
@@ -255,11 +240,12 @@ html.app-sidebar-preload-collapsed .app-shell {
   grid-template-columns: 64px 1fr;
 }
 
-/* Topbar: links (Menü-Toggle + Name), Mitte (Countdown), rechts (Theme/User) - */
+/* Topbar: links (Menü-Toggle), rechts (Theme/User) - der Countdown steht
+   seit dem Umzug in den Sidebar-Header (siehe .app-sidebar-countdown). */
 .app-topbar {
   grid-area: topbar;
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   column-gap: var(--pnk-space-3);
 }
@@ -270,19 +256,8 @@ html.app-sidebar-preload-collapsed .app-shell {
   gap: var(--pnk-space-2);
   min-width: 0;
 }
-.app-topbar-brand__text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.app-topbar-center {
-  grid-column: 2;
-  display: flex;
-  justify-content: center;
-}
-.app-topbar-center[hidden] { display: none; }
 .app-topbar-right {
-  grid-column: 3;
+  grid-column: 2;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -296,6 +271,15 @@ html.app-sidebar-preload-collapsed .app-shell {
   color: var(--pnk-accent-warm);
   line-height: 1;
 }
+/* Countdown im Sidebar-Header (unter dem Einklapp-Button, ueber "Party") -
+   deutlich kleiner als vorher in der breiten Topbar, damit er in die
+   Sidebar-Breite passt. */
+.app-sidebar-countdown {
+  padding: 0 8px 8px;
+  text-align: center;
+}
+.app-sidebar-countdown[hidden] { display: none; }
+.app-sidebar-countdown .app-countdown { font-size: 22px; }
 .app-sidebar-toggle {
   display: none;
 }
@@ -474,16 +458,15 @@ html.app-sidebar-preload-collapsed .app-sidebar {
 .app-sidebar-is-collapsed .app-nav-label,
 .app-sidebar-is-collapsed .app-sidebar-heading,
 .app-sidebar-is-collapsed .app-sidebar-version,
+.app-sidebar-is-collapsed .app-sidebar-countdown,
 html.app-sidebar-preload-collapsed .app-nav-label,
 html.app-sidebar-preload-collapsed .app-sidebar-heading,
-html.app-sidebar-preload-collapsed .app-sidebar-version {
+html.app-sidebar-preload-collapsed .app-sidebar-version,
+html.app-sidebar-preload-collapsed .app-sidebar-countdown {
   display: none;
 }
 .app-sidebar-is-collapsed .app-sidebar-collapse-toggle {
   transform: rotate(180deg);
-}
-.app-sidebar-is-collapsed .app-topbar-brand__text {
-  display: none;
 }
 
 .app-sidebar-backdrop { display: none; }
@@ -598,6 +581,9 @@ html.app-sidebar-preload-collapsed .app-sidebar-version {
   .app-sidebar .app-sidebar-heading {
     display: block;
   }
+  .app-sidebar .app-sidebar-countdown:not([hidden]) {
+    display: block;
+  }
   .app-shell.app-sidebar-is-open .app-sidebar-backdrop {
     display: block;
     position: fixed;
@@ -629,7 +615,6 @@ html.app-sidebar-preload-collapsed .app-sidebar-version {
 }
 
 @media (max-width: 560px) {
-  .app-topbar-brand__text { display: none; }
   .app-countdown { font-size: 16px; }
   .app-player-bar__progress { order: 1; flex-basis: 100%; }
 }
