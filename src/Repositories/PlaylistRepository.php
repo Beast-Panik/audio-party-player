@@ -89,9 +89,24 @@ final class PlaylistRepository
         }
     }
 
+    /**
+     * Entfernt einen Playlist-Eintrag (Admin-Klick auf "Entfernen"). Markiert
+     * den Track dabei als "gerade entfernt" (removed_at) - sonst wuerde der
+     * naechste Auto-DJ-Durchlauf (pickCandidate()) ihn als "noch nie
+     * gespielt" sofort wieder auswaehlen und er waere sekundenspaeter wieder
+     * unten in der Playlist. Bewusst getrennt von last_played_at, damit die
+     * "Kuerzlich gespielt"-Anzeige nicht faelschlich eine Wiedergabe zeigt.
+     */
     public function remove(int $id): void
     {
-        Database::get()->prepare('DELETE FROM playlist WHERE id = ?')->execute([$id]);
+        $pdo = Database::get();
+        $stmt = $pdo->prepare('SELECT track_id FROM playlist WHERE id = ?');
+        $stmt->execute([$id]);
+        $row = $stmt->fetch();
+        $pdo->prepare('DELETE FROM playlist WHERE id = ?')->execute([$id]);
+        if ($row) {
+            $pdo->prepare('UPDATE tracks SET removed_at = ? WHERE id = ?')->execute([Util::now(), (int) $row['track_id']]);
+        }
     }
 
     public function removeByTrackId(int $trackId): void
@@ -175,6 +190,11 @@ final class PlaylistRepository
             $params = array_merge($params, $excludeIds);
         }
         $conditions[] = '(last_played_at IS NULL OR last_played_at <= ? OR (lock_released_at IS NOT NULL AND lock_released_at > last_played_at))';
+        $params[] = $cutoff;
+        // Gerade erst vom Admin aus der Playlist entfernte Tracks sollen der
+        // gleichen Sperrfrist unterliegen wie kuerzlich gespielte - sonst
+        // waehlt der Auto-DJ genau den Track sofort wieder aus (Bug-Report).
+        $conditions[] = '(removed_at IS NULL OR removed_at <= ? OR (lock_released_at IS NOT NULL AND lock_released_at > removed_at))';
         $params[] = $cutoff;
         if ($avoidArtist !== null) {
             $conditions[] = '(artist IS NULL OR artist <> ?)';

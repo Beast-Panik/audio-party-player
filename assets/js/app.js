@@ -95,6 +95,9 @@
     var crossfadeEnabled = false;
     var crossfadeSeconds = 3;
     var crossfading = false;
+    // track_id des Tracks, der gerade per Crossfade eingeblendet wird (fuer
+    // den Blink-Effekt in der Playlist-Zeile, siehe updateCrossfadeRowClass).
+    var crossfadeTargetTrackId = null;
     var playlistItems = [];
     var isDragging = false;
     // Kleiner Verlauf der zuletzt gespielten Tracks, damit der "Zurueck"-
@@ -130,6 +133,23 @@
       });
       var row = document.querySelector('.app-track-row[data-id="' + id + '"]');
       if (row) row.classList.add('is-playing');
+    }
+
+    /** Setzt/entfernt die Blink-Markierung auf der Playlist-Zeile des Tracks,
+     * der gerade per Crossfade eingeblendet wird - sofort bei Start/Ende des
+     * Crossfades, unabhaengig vom naechsten renderPlaylist()-Aufruf. */
+    function updateCrossfadeRowClass() {
+      var playlistList = document.getElementById('playlist-list');
+      if (!playlistList) return;
+      playlistList.querySelectorAll('.app-playlist-item.is-crossfading-in').forEach(function (row) {
+        if (String(row.getAttribute('data-track-id')) !== String(crossfadeTargetTrackId)) {
+          row.classList.remove('is-crossfading-in');
+        }
+      });
+      if (crossfadeTargetTrackId !== null) {
+        var row = playlistList.querySelector('.app-playlist-item[data-track-id="' + crossfadeTargetTrackId + '"]');
+        if (row) row.classList.add('is-crossfading-in');
+      }
     }
     window.APP_HIGHLIGHT_PLAYING = highlightPlayingRow;
     window.APP_GET_CURRENT_TRACK = function () { return currentTrackId; };
@@ -258,6 +278,8 @@
      * "durchgespielt" und bleibt unangetastet in der Playlist stehen. */
     function beginCrossfade(next, skipAdvance) {
       crossfading = true;
+      crossfadeTargetTrackId = next.track_id;
+      updateCrossfadeRowClass();
       var finished = currentTrackId;
       var fadeMs = Math.max(500, crossfadeSeconds * 1000);
       var startTs = null;
@@ -303,6 +325,8 @@
       syncDurationUI();
       if (!skipAdvance) advanceOnServer(finishedTrackId);
       crossfading = false;
+      crossfadeTargetTrackId = null;
+      updateCrossfadeRowClass();
       setTimeout(refreshPlaylist, 250);
     }
 
@@ -465,7 +489,8 @@
       items.forEach(function (it) {
         var isCurrent = it.track_id === currentTrackId;
         var isNext = next && next.id === it.id;
-        html += '<div class="app-request-item app-playlist-item" draggable="true" data-id="' + it.id + '" data-track-id="' + it.track_id + '">' +
+        var isCrossfadingIn = crossfadeTargetTrackId !== null && it.track_id === crossfadeTargetTrackId;
+        html += '<div class="app-request-item app-playlist-item' + (isCrossfadingIn ? ' is-crossfading-in' : '') + '" draggable="true" data-id="' + it.id + '" data-track-id="' + it.track_id + '">' +
           '<div class="app-playlist-item__countdown"></div>' +
           '<div>' +
             '<div style="font-weight:600;">' + escapeHtml(it.title || '(ohne Titel)') + (isCurrent ? ' <span class="pnk-text-muted">▶ läuft</span>' : '') + '</div>' +

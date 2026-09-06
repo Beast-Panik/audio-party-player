@@ -21,7 +21,7 @@ final class Database
      * hoehere Code-Version, schickt einen angemeldeten Admin automatisch zu
      * install.php und die Migration laeuft dort erst nach einem Klick.
      */
-    public const SCHEMA_VERSION = 4;
+    public const SCHEMA_VERSION = 5;
 
     public static function get(): \PDO
     {
@@ -123,6 +123,7 @@ final class Database
         self::ensureColumn($pdo, $driver, 'playlist', 'position', $driver === 'mysql' ? 'INT NOT NULL DEFAULT 0' : 'INTEGER NOT NULL DEFAULT 0');
         self::ensureColumn($pdo, $driver, 'tracks', 'cover_ext', $driver === 'mysql' ? 'VARCHAR(8) NULL' : 'TEXT');
         self::ensureColumn($pdo, $driver, 'tracks', 'lock_released_at', $driver === 'mysql' ? 'DATETIME NULL' : 'TEXT');
+        self::ensureColumn($pdo, $driver, 'tracks', 'removed_at', $driver === 'mysql' ? 'DATETIME NULL' : 'TEXT');
 
         self::runStatements($pdo, [
             $driver === 'mysql'

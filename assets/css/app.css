@@ -574,6 +574,21 @@ html.app-sidebar-preload-collapsed .app-sidebar-ticker {
   outline: 2px dashed var(--pnk-accent);
   outline-offset: -2px;
 }
+/* Blinkt waehrend ein Crossfade zu genau diesem Track laeuft (egal ob durch
+   natuerliches Trackende, Skip oder manuellen Klick ausgeloest) - gleiche
+   Farbe wie .app-badge-next, damit sofort klar ist: DIESER Track startet
+   gerade. Liegt ueber dem Fortschrittsbalken (::before), aber hinter dem
+   eigentlichen Zeileninhalt (siehe .app-playlist-item > *). */
+.app-playlist-item.is-crossfading-in::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--pnk-accent-warm);
+  opacity: 0.32;
+  animation: app-countdown-blink 1s step-start infinite;
+  pointer-events: none;
+}
 .app-badge-next {
   background: var(--pnk-accent-warm);
   color: #1c1c1c;
