@@ -106,10 +106,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $settings->set('request_url_override', $requestUrlOverride !== '' ? rtrim($requestUrlOverride, '/') : null);
         $success = 'Einstellungen gespeichert.';
     }
+
+    if ($form === 'display_screen') {
+        Csrf::requireValid();
+        $displayTheme = $_POST['display_theme'] ?? 'dark';
+        $settings->set('display_theme', $displayTheme === 'light' ? 'light' : 'dark');
+        $success = 'Einstellungen gespeichert.';
+        $openSection = 'wunsch_seite';
+    }
 }
 
 $appName = $settings->get('app_name', 'Party Player - pan1k.de');
 $requestUrlOverride = $settings->get('request_url_override', '');
+$displayTheme = $settings->get('display_theme', 'dark');
 $requestUrl = ($requestUrlOverride ?: rtrim(Config::get('app_url', ''), '/')) . app_url('request.php');
 $guestLimitCount = (int) $settings->get('guest_limit_count', '3');
 $guestLimitMinutes = (int) $settings->get('guest_limit_minutes', '60');
@@ -140,7 +149,7 @@ require __DIR__ . '/../templates/admin_header.php';
 
 <details class="pnk-card app-accordion"<?= settings_accordion_open('allgemein', $openSection) ?>>
   <summary class="pnk-card__header">
-    <span class="pnk-card__title app-accordion__title"><span aria-hidden="true">🏷️</span> Allgemein</span>
+    <span class="pnk-card__title app-accordion__title">Allgemein</span>
     <span class="app-accordion__chevron" aria-hidden="true">▸</span>
   </summary>
   <div class="app-accordion__body">
@@ -156,7 +165,7 @@ require __DIR__ . '/../templates/admin_header.php';
 
 <details class="pnk-card app-accordion"<?= settings_accordion_open('anzeige', $openSection) ?>>
   <summary class="pnk-card__header">
-    <span class="pnk-card__title app-accordion__title"><span aria-hidden="true">📺</span> Anzeige</span>
+    <span class="pnk-card__title app-accordion__title">Anzeige</span>
     <span class="app-accordion__chevron" aria-hidden="true">▸</span>
   </summary>
   <div class="app-accordion__body">
@@ -184,7 +193,7 @@ require __DIR__ . '/../templates/admin_header.php';
 
 <details class="pnk-card app-accordion"<?= settings_accordion_open('gaeste_wuensche', $openSection) ?>>
   <summary class="pnk-card__header">
-    <span class="pnk-card__title app-accordion__title"><span aria-hidden="true">🎶</span> Gäste-Wünsche</span>
+    <span class="pnk-card__title app-accordion__title">Gäste-Wünsche</span>
     <span class="app-accordion__chevron" aria-hidden="true">▸</span>
   </summary>
   <div class="app-accordion__body">
@@ -230,7 +239,7 @@ require __DIR__ . '/../templates/admin_header.php';
 
 <details class="pnk-card app-accordion"<?= settings_accordion_open('player', $openSection) ?>>
   <summary class="pnk-card__header">
-    <span class="pnk-card__title app-accordion__title"><span aria-hidden="true">🎚️</span> Player</span>
+    <span class="pnk-card__title app-accordion__title">Player</span>
     <span class="app-accordion__chevron" aria-hidden="true">▸</span>
   </summary>
   <div class="app-accordion__body">
@@ -254,7 +263,7 @@ require __DIR__ . '/../templates/admin_header.php';
 
 <details class="pnk-card app-accordion"<?= settings_accordion_open('player_sperre', $openSection) ?>>
   <summary class="pnk-card__header">
-    <span class="pnk-card__title app-accordion__title"><span aria-hidden="true">🔒</span> Player-Sperre (PIN)</span>
+    <span class="pnk-card__title app-accordion__title">Player-Sperre (PIN)</span>
     <span class="app-accordion__chevron" aria-hidden="true">▸</span>
   </summary>
   <div class="app-accordion__body">
@@ -293,7 +302,7 @@ require __DIR__ . '/../templates/admin_header.php';
 
 <details class="pnk-card app-accordion"<?= settings_accordion_open('wunsch_seite', $openSection) ?>>
   <summary class="pnk-card__header">
-    <span class="pnk-card__title app-accordion__title"><span aria-hidden="true">📱</span> Wunsch-Seite &amp; QR-Code</span>
+    <span class="pnk-card__title app-accordion__title">Wunsch-Seite &amp; QR-Code</span>
     <span class="app-accordion__chevron" aria-hidden="true">▸</span>
   </summary>
   <div class="app-accordion__body">
@@ -327,6 +336,34 @@ require __DIR__ . '/../templates/admin_header.php';
         </p>
       </div>
     </div>
+
+    <hr style="border:0; border-top:1px solid var(--pnk-border); margin:20px 0;">
+
+    <p class="pnk-text-muted" style="margin:0 0 12px;">
+      Eigene, großflächige Anzeige-Seite für einen Bildschirm/Beamer: QR-Code, laufender Ticker
+      des aktuellen Tracks und Ankündigung des nächsten Songs.
+      <a href="<?= app_url('display.php') ?>" target="_blank" rel="noopener">Anzeige-Bildschirm öffnen ↗</a>
+    </p>
+    <form method="post" action="<?= app_url('admin/settings.php') ?>">
+      <?= Csrf::field() ?>
+      <input type="hidden" name="form" value="display_screen">
+      <label class="pnk-label">Theme der Anzeige-Seite</label>
+      <div style="display:flex; gap:16px;">
+        <label class="pnk-field-row" style="cursor:pointer;">
+          <input class="pnk-checkbox" type="radio" name="display_theme" value="dark" <?= $displayTheme !== 'light' ? 'checked' : '' ?>>
+          <span>Dunkel</span>
+        </label>
+        <label class="pnk-field-row" style="cursor:pointer;">
+          <input class="pnk-checkbox" type="radio" name="display_theme" value="light" <?= $displayTheme === 'light' ? 'checked' : '' ?>>
+          <span>Hell</span>
+        </label>
+      </div>
+      <p class="pnk-text-muted" style="font-size:12px; margin:8px 0 0;">
+        Der QR-Code selbst bleibt in jedem Fall dunkel auf hellem Grund, damit er zuverlässig
+        scannbar bleibt - nur der Rest der Seite wechselt das Theme.
+      </p>
+      <button class="pnk-btn pnk-btn--primary" type="submit" style="margin-top:16px;">Speichern</button>
+    </form>
   </div>
 </details>
 

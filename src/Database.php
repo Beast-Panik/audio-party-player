@@ -21,7 +21,7 @@ final class Database
      * hoehere Code-Version, schickt einen angemeldeten Admin automatisch zu
      * install.php und die Migration laeuft dort erst nach einem Klick.
      */
-    public const SCHEMA_VERSION = 3;
+    public const SCHEMA_VERSION = 4;
 
     public static function get(): \PDO
     {
@@ -324,6 +324,19 @@ final class Database
         $statements[] = $isMysql
             ? "CREATE UNIQUE INDEX idx_guest_limit_resets_token ON guest_limit_resets (guest_token)"
             : "CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_limit_resets_token ON guest_limit_resets (guest_token)";
+
+        // Leichtgewichtige Gaeste-Reaktion (Herz-Button) auf den aktuell
+        // laufenden Track - eine Zeile pro Klick, Spam-Bremse siehe
+        // TrackReactionRepository::add().
+        $statements[] = "CREATE TABLE IF NOT EXISTS track_reactions (
+            id {$pk},
+            track_id {$int} NOT NULL,
+            guest_token {$varchar32} NOT NULL,
+            created_at {$datetimeNotNull}
+        ){$engine}";
+        $statements[] = $isMysql
+            ? "CREATE INDEX idx_track_reactions_track_created ON track_reactions (track_id, created_at)"
+            : "CREATE INDEX IF NOT EXISTS idx_track_reactions_track_created ON track_reactions (track_id, created_at)";
 
         return $statements;
     }

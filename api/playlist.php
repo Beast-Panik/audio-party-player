@@ -103,6 +103,7 @@ if ($method === 'POST') {
         // kann (siehe api/now_playing.php).
         $settings->set('now_playing_title', (string) ($input['title'] ?? ''));
         $settings->set('now_playing_artist', (string) ($input['artist'] ?? ''));
+        $settings->set('now_playing_track_id', (string) ((int) ($input['track_id'] ?? 0)));
         echo json_encode(['ok' => true]);
         exit;
     }

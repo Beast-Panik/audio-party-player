@@ -212,7 +212,7 @@
 
     /** Meldet den aktuellen Track dem Server, damit der Ticker auf der Gaeste-Seite ihn anzeigen kann. */
     function pushNowPlayingToServer(title, artist) {
-      postJson(api('api/playlist.php'), { action: 'set_now_playing', title: title || '', artist: artist || '', csrf_token: CSRF });
+      postJson(api('api/playlist.php'), { action: 'set_now_playing', title: title || '', artist: artist || '', track_id: currentTrackId, csrf_token: CSRF });
     }
 
     /** Laedt einen Track in das aktive <audio>-Element und spielt ihn ab (kein Playlist-Seiteneffekt). */
@@ -506,40 +506,72 @@
       updateCurrentPlaylistProgress();
     }
 
-    /** Fragt Playlist/Auto-DJ/Crossfade-Status ab. Laeuft dauerhaft im Hintergrund
-     * (nicht nur auf player.php), damit Menue-Badge und "Als naechstes"-Anzeige
-     * ueberall aktuell bleiben - unabhaengig davon, ob gerade eine Soft- oder
-     * Hart-Navigation stattgefunden hat. #playlist-list wird bei jedem Tick frisch
-     * abgefragt und nur gerendert, wenn die Seite es gerade zeigt. */
+    /** Wendet ein Playlist/Auto-DJ/Crossfade-JSON (von api/playlist.php GET oder
+     * dem SSE-Stream api/events.php) an - Menue-Badge und "Als naechstes"-Anzeige
+     * bleiben so ueberall aktuell, unabhaengig von Soft-/Hart-Navigation.
+     * #playlist-list wird nur gerendert, wenn die Seite es gerade zeigt. */
+    function applyPlaylistJson(j) {
+      autoDjEnabled = !!j.auto_dj;
+      crossfadeEnabled = !!j.crossfade_enabled;
+      crossfadeSeconds = j.crossfade_seconds || 3;
+      playlistItems = j.items || [];
+      updateNavBadge(playlistItems.length);
+      var next = nextItemAfterCurrent(playlistItems);
+      if (nextEl) nextEl.textContent = next ? (next.title || '(ohne Titel)') + (next.artist ? ' – ' + next.artist : '') : '-';
+
+      var autoDjToggle = document.getElementById('auto-dj-toggle');
+      var autoDjLabelEl = document.getElementById('auto-dj-label');
+      var autoDjBadge = document.getElementById('auto-dj-summary-badge');
+      if (autoDjToggle) autoDjToggle.checked = autoDjEnabled;
+      if (autoDjLabelEl) autoDjLabelEl.textContent = autoDjEnabled ? 'An' : 'Aus';
+      if (autoDjBadge) {
+        autoDjBadge.textContent = autoDjEnabled ? 'An' : 'Aus';
+        autoDjBadge.classList.toggle('pnk-badge--accent', autoDjEnabled);
+      }
+
+      var playlistList = document.getElementById('playlist-list');
+      if (playlistList && !isDragging) renderPlaylist(playlistList, playlistItems);
+    }
     function refreshPlaylist() {
-      fetch(api('api/playlist.php'))
-        .then(function (r) { return r.json(); })
-        .then(function (j) {
-          autoDjEnabled = !!j.auto_dj;
-          crossfadeEnabled = !!j.crossfade_enabled;
-          crossfadeSeconds = j.crossfade_seconds || 3;
-          playlistItems = j.items || [];
-          updateNavBadge(playlistItems.length);
-          var next = nextItemAfterCurrent(playlistItems);
-          if (nextEl) nextEl.textContent = next ? (next.title || '(ohne Titel)') + (next.artist ? ' – ' + next.artist : '') : '-';
-
-          var autoDjToggle = document.getElementById('auto-dj-toggle');
-          var autoDjLabelEl = document.getElementById('auto-dj-label');
-          var autoDjBadge = document.getElementById('auto-dj-summary-badge');
-          if (autoDjToggle) autoDjToggle.checked = autoDjEnabled;
-          if (autoDjLabelEl) autoDjLabelEl.textContent = autoDjEnabled ? 'An' : 'Aus';
-          if (autoDjBadge) {
-            autoDjBadge.textContent = autoDjEnabled ? 'An' : 'Aus';
-            autoDjBadge.classList.toggle('pnk-badge--accent', autoDjEnabled);
-          }
-
-          var playlistList = document.getElementById('playlist-list');
-          if (playlistList && !isDragging) renderPlaylist(playlistList, playlistItems);
-        });
+      fetch(api('api/playlist.php')).then(function (r) { return r.json(); }).then(applyPlaylistJson);
     }
     window.APP_REFRESH_PLAYLIST = refreshPlaylist;
     refreshPlaylist();
-    setInterval(refreshPlaylist, 8000);
+
+    /** Zeigt die Anzahl Gaeste-Herz-Reaktionen fuer den aktuell laufenden Track an (rein informativ). */
+    function applyReactionJson(nowPlaying, reactionCount) {
+      var badge = document.getElementById('np-reactions');
+      var countEl = document.getElementById('np-reactions-count');
+      if (!badge || !countEl) return;
+      var trackId = nowPlaying ? nowPlaying.track_id : null;
+      if (currentTrackId === null || trackId !== currentTrackId || !reactionCount) {
+        badge.hidden = true;
+        return;
+      }
+      countEl.textContent = reactionCount;
+      badge.hidden = false;
+    }
+    // Schneller erster Render per Einzel-Request, bevor der SSE-Stream unten
+    // die erste Nachricht liefert.
+    fetch(api('api/now_playing.php')).then(function (r) { return r.json(); }).then(function (j) {
+      applyReactionJson({ track_id: j.track_id }, j.reaction_count);
+    });
+
+    /** Echtzeit-Updates (Playlist/Wunschliste/Reaktionszaehler) per Server-Sent
+     * Events statt 8-10s-Polling - siehe api/events.php. Kurzlebiger Stream
+     * (~24s) mit automatischem Reconnect, schonend fuer Shared-Hosting mit
+     * strengen PHP-Ausfuehrungszeitlimits. Ersetzt die bisherigen Polling-
+     * Intervalle von refreshPlaylist/refreshQueue/der Reaktionsanzeige. */
+    if (window.EventSource) {
+      var adminEvents = new EventSource(api('api/events.php?scope=admin'));
+      adminEvents.onmessage = function (e) {
+        var j;
+        try { j = JSON.parse(e.data); } catch (err) { return; }
+        applyPlaylistJson(j);
+        renderQueue(j.requests || []);
+        applyReactionJson(j.now_playing, j.reaction_count);
+      };
+    }
 
     /** Auto-DJ-Umschalter auf player.php - Element existiert nur dort und wird bei
      * jeder Soft-Navigation neu erzeugt, daher Listener bei jedem Seiteneintritt
@@ -799,7 +831,8 @@
   }
   window.APP_REFRESH_QUEUE = refreshQueue;
   refreshQueue();
-  setInterval(refreshQueue, 8000);
+  // Kein eigenes Polling-Intervall mehr - wird ueber den SSE-Stream
+  // (api/events.php, siehe applyPlaylistJson/adminEvents oben) aktuell gehalten.
 
   /* ================================================================== *
    * Scan-Steuerung (admin/library.php) - Elemente existieren nur dort und

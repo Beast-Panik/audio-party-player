@@ -19,11 +19,29 @@
 .app-nav-btn:hover { background: #3a4045; }
 .app-nav-btn.is-active { border-color: var(--pnk-accent); }
 .app-nav-icon {
-  font-size: 15px;
   width: 18px;
-  text-align: center;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
+.app-nav-icon-svg {
+  width: 17px;
+  height: 17px;
+  display: block;
+}
+/* Einfarbige Menue-Icons - jede Farbe kommt direkt aus den Design-Tokens
+   (panikdark.css), jedes Icon genau eine Farbe, nie mehrfarbig. Ueber
+   currentColor auf dem SVG gesteuert (stroke bzw. die gefuellten Punkte
+   im Einstellungen-Icon). */
+.app-nav-icon--player  { color: var(--pnk-accent); }
+.app-nav-icon--wishlist{ color: var(--pnk-accent-warm); }
+.app-nav-icon--dashboard{ color: var(--pnk-success); }
+.app-nav-icon--library { color: var(--pnk-warning); }
+.app-nav-icon--users   { color: var(--pnk-text-link); }
+.app-nav-icon--settings{ color: var(--pnk-text-muted); }
+.app-nav-icon--lock,
+.app-nav-icon--key     { color: var(--pnk-danger); }
 .app-nav-label { flex: 1; }
 
 /* Accordion fuer Einstellungsgruppen - natives <details>/<summary>, kein JS noetig. */
@@ -352,8 +370,19 @@ html.app-sidebar-preload-collapsed .app-shell {
   min-width: 160px;
   max-width: 280px;
 }
-.app-player-bar__title { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-player-bar__title-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.app-player-bar__title { display: block; flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-player-bar__artist { color: var(--pnk-text-muted); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Live-Zaehler der Gaeste-Herz-Reaktionen auf den aktuell laufenden Track -
+   rein informativ fuer den Admin, kein Button. */
+.app-reaction-badge {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--pnk-accent-warm);
+  white-space: nowrap;
+}
+.app-reaction-badge[hidden] { display: none; }
 .app-player-bar__progress {
   flex: 1;
   min-width: 160px;
@@ -404,15 +433,21 @@ html.app-sidebar-preload-collapsed .app-shell {
 .app-nav-item-wrap { position: relative; }
 .app-nav-badge {
   position: absolute;
-  top: 6px;
+  top: 50%;
   right: 10px;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
   background: var(--pnk-accent);
   color: var(--pnk-text-on-accent);
   font-size: 11px;
   font-weight: 700;
   line-height: 1;
-  padding: 3px 6px;
-  border-radius: var(--pnk-radius-pill);
+  padding: 0 5px;
+  border-radius: var(--pnk-radius-sm);
   pointer-events: none;
 }
 .app-nav-badge[hidden] { display: none; }
@@ -657,6 +692,36 @@ html.app-sidebar-preload-collapsed .app-sidebar-ticker {
 
 /* Ticker auf der Gaeste-Wunschseite: zeigt den aktuell laufenden Track
    anstelle des frueheren statischen App-Namens im Kopfbereich. */
+.app-now-playing-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.app-now-playing-row .app-ticker {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+/* Leichtgewichtiger Herz-Button neben dem Ticker fuer eine kurze
+   Stimmungs-Reaktion auf den aktuell laufenden Track. */
+.app-heart-btn {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--pnk-border);
+  background: var(--pnk-surface-raised);
+  color: var(--pnk-text);
+  border-radius: var(--pnk-radius);
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.app-heart-btn[hidden] { display: none; }
+.app-heart-btn:hover { background: #3a4045; }
+.app-heart-btn.is-active { transform: scale(1.15); transition: transform 150ms ease; }
 .app-ticker {
   overflow: hidden;
   white-space: nowrap;
@@ -703,3 +768,91 @@ html.app-sidebar-preload-collapsed .app-sidebar-ticker {
   padding: 0;
 }
 .app-preview-play:hover { background: rgba(0, 0, 0, 0.65); }
+
+/* ==========================================================================
+   Anzeige-Bildschirm (display.php): grossflaechige, rein passive Seite fuer
+   einen Beamer/TV bei der Party. Fluid Typography ueber clamp()/vmin statt
+   fester Breakpoints, damit sie von der Handy-Vorschau bis zum breiten TV
+   stufenlos skaliert, ohne Ueberlauf/Scrollbalken.
+   ========================================================================== */
+.app-display-body {
+  /* .pnk-app erzwingt sonst display:grid (Admin-Shell-Layout) - hier
+     bewusst ein einfacher Block, damit .app-display sich per Flexbox
+     zentrieren kann statt in ein Grid-Raster gepresst zu werden. */
+  display: block;
+  margin: 0;
+  min-height: 100vh;
+  overflow: hidden;
+  background: var(--pnk-surface);
+  color: var(--pnk-text);
+}
+.app-display {
+  min-height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: clamp(16px, 3vmin, 40px);
+  padding: clamp(16px, 4vmin, 56px);
+  text-align: center;
+}
+.app-display__hint {
+  font-size: clamp(20px, 4.2vmin, 52px);
+  font-weight: 700;
+  line-height: 1.2;
+  max-width: 90vw;
+}
+/* QR-Code bleibt bewusst IMMER dunkel-auf-hell in einer festen weissen
+   Karte, unabhaengig vom Seiten-Theme - invertierte QR-Codes werden von
+   vielen Handy-Kameras schlechter erkannt, das wuerde den Kernzweck der
+   Seite gefaehrden. */
+.app-display__qr-card {
+  background: #ffffff;
+  border-radius: var(--pnk-radius-lg);
+  padding: clamp(10px, 2vmin, 24px);
+  box-shadow: var(--pnk-shadow-lg);
+  width: clamp(180px, 40vmin, 520px);
+  line-height: 0;
+}
+.app-display__qr-card img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.app-display__ticker {
+  width: 100%;
+  max-width: 100vw;
+  overflow: hidden;
+  white-space: nowrap;
+  font-size: clamp(26px, 6.5vmin, 90px);
+  font-weight: 700;
+  color: var(--pnk-accent-warm);
+}
+.app-display__ticker-track {
+  display: inline-block;
+  padding-left: 100%;
+  animation: app-ticker-scroll 22s linear infinite;
+}
+.app-display__next {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: 92vw;
+}
+.app-display__next-label {
+  font-size: clamp(14px, 2vmin, 22px);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--pnk-text-muted);
+}
+.app-display__next-title {
+  font-size: clamp(18px, 3.6vmin, 42px);
+  font-weight: 600;
+  overflow-wrap: break-word;
+}
+.app-display__next-guest {
+  font-size: 0.6em;
+  font-weight: 400;
+  color: var(--pnk-text-muted);
+}

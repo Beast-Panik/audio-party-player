@@ -23,7 +23,10 @@ require __DIR__ . '/templates/public_header.php';
   window.APP_PREVIEW_SECONDS = <?= (int) $previewSeconds ?>;
 </script>
 
-<div class="app-ticker" id="now-playing-ticker" hidden><span class="app-ticker__text" id="now-playing-text"></span></div>
+<div class="app-now-playing-row">
+  <div class="app-ticker" id="now-playing-ticker" hidden><span class="app-ticker__text" id="now-playing-text"></span></div>
+  <button type="button" class="app-heart-btn" id="btn-react" hidden title="Gefällt mir!">❤ <span id="react-count">0</span></button>
+</div>
 <p class="lede">Song gesucht? Einfach suchen und wünschen – der DJ sieht deinen Wunsch sofort.</p>
 
 <div class="pnk-card" id="name-card" style="margin-bottom:16px;">

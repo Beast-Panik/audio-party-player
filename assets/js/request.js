@@ -38,28 +38,53 @@
 
   /* ================================================================== *
    * Ticker: zeigt den aktuell laufenden Track statt eines statischen
-   * App-Namens im Kopfbereich.
+   * App-Namens im Kopfbereich, plus Herz-Reaktion auf den aktuellen Track.
+   * Wird sowohl per Erst-Request als auch fortlaufend per SSE (weiter
+   * unten, api/events.php) mit applyNowPlaying() aktualisiert.
    * ================================================================== */
-  (function initTicker() {
-    var wrap = document.getElementById('now-playing-ticker');
-    var textEl = document.getElementById('now-playing-text');
-    if (!wrap || !textEl) return;
+  var tickerWrap = document.getElementById('now-playing-ticker');
+  var tickerTextEl = document.getElementById('now-playing-text');
+  var reactBtn = document.getElementById('btn-react');
+  var reactCountEl = document.getElementById('react-count');
+  var nowPlayingTrackId = null;
 
-    function load() {
-      fetch(api('api/now_playing.php'))
-        .then(function (r) { return r.json(); })
-        .then(function (j) {
-          if (!j.title) {
-            wrap.hidden = true;
-            return;
-          }
-          wrap.hidden = false;
-          textEl.textContent = '🎵 Läuft gerade: ' + j.title + (j.artist ? ' – ' + j.artist : '');
-        });
+  function applyNowPlaying(nowPlaying, reactionCount) {
+    if (!tickerWrap || !tickerTextEl) return;
+    nowPlayingTrackId = (nowPlaying && nowPlaying.track_id) || null;
+    if (!nowPlaying || !nowPlaying.title) {
+      tickerWrap.hidden = true;
+      if (reactBtn) reactBtn.hidden = true;
+      return;
     }
-    load();
-    setInterval(load, 8000);
-  })();
+    tickerWrap.hidden = false;
+    tickerTextEl.textContent = '🎵 Läuft gerade: ' + nowPlaying.title + (nowPlaying.artist ? ' – ' + nowPlaying.artist : '');
+    if (reactBtn) {
+      reactBtn.hidden = !nowPlayingTrackId;
+      reactCountEl.textContent = reactionCount || 0;
+    }
+  }
+
+  // Schneller erster Render per Einzel-Request, bevor der SSE-Stream weiter
+  // unten die erste Nachricht liefert.
+  fetch(api('api/now_playing.php')).then(function (r) { return r.json(); }).then(function (j) {
+    applyNowPlaying(j, j.reaction_count);
+  });
+
+  // Leichtgewichtige Stimmungs-Reaktion auf den aktuell laufenden Track,
+  // ohne den vollen Wunsch-Flow (siehe api/reactions.php).
+  if (reactBtn) {
+    reactBtn.addEventListener('click', function () {
+      if (!nowPlayingTrackId) return;
+      reactBtn.disabled = true;
+      reactBtn.classList.add('is-active');
+      postJson(api('api/reactions.php'), { action: 'react', track_id: nowPlayingTrackId, csrf_token: CSRF })
+        .then(function (res) {
+          reactBtn.disabled = false;
+          if (res.ok) reactCountEl.textContent = res.body.count;
+          setTimeout(function () { reactBtn.classList.remove('is-active'); }, 400);
+        });
+    });
+  }
 
   /* ================================================================== *
    * Namens-Sperre: der zuerst gesetzte Name gilt fuer dieses Geraet
@@ -280,5 +305,20 @@
       .then(function (j) { renderQueue(j.requests || []); });
   }
   loadQueue();
-  setInterval(loadQueue, 10000);
+
+  /* ================================================================== *
+   * Echtzeit-Updates (Ticker/Herz-Zaehler/Wunschliste) per Server-Sent
+   * Events statt 8-10s-Polling - siehe api/events.php. Kurzlebiger Stream
+   * (~24s) mit automatischem Reconnect, schonend fuer Shared-Hosting mit
+   * strengen PHP-Ausfuehrungszeitlimits.
+   * ================================================================== */
+  if (window.EventSource) {
+    var guestEvents = new EventSource(api('api/events.php?scope=guest'));
+    guestEvents.onmessage = function (e) {
+      var j;
+      try { j = JSON.parse(e.data); } catch (err) { return; }
+      applyNowPlaying(j.now_playing || {}, j.reaction_count || 0);
+      renderQueue(j.queue || []);
+    };
+  }
 })();

@@ -17,11 +17,35 @@ $countdownEnabled = $settingsRepo->get('countdown_enabled', '0') === '1';
 $countdownFontSize = (int) $settingsRepo->get('countdown_font_size', '22');
 $playlistCountForNav = Auth::isLoggedIn() ? (new PlaylistRepository())->count() : 0;
 
+if (!function_exists('nav_icon_svg')) {
+    /**
+     * Einfarbige Menue-Icons (Strichzeichnung, "stroke=currentColor") statt
+     * bunter Emoji - die Farbe kommt ausschliesslich ueber CSS-Klassen aus
+     * den Design-Tokens (siehe .app-nav-icon--* in app.css), jedes Icon
+     * genau eine Farbe, nie mehrfarbig.
+     */
+    function nav_icon_svg(string $name): string
+    {
+        $icons = [
+            'player' => '<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2" y="14" width="5" height="7" rx="2"/><rect x="17" y="14" width="5" height="7" rx="2"/>',
+            'wishlist' => '<path d="M9 17V4l10-2v13"/><circle cx="6" cy="17" r="3"/><circle cx="16" cy="15" r="3"/>',
+            'dashboard' => '<line x1="4" y1="20" x2="4" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="20" y1="20" x2="20" y2="14"/>',
+            'library' => '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3"/>',
+            'users' => '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.5-7 8-7s8 3 8 7"/>',
+            'settings' => '<line x1="5" y1="4" x2="5" y2="20"/><circle cx="5" cy="9" r="2" fill="currentColor" stroke="none"/><line x1="12" y1="4" x2="12" y2="20"/><circle cx="12" cy="15" r="2" fill="currentColor" stroke="none"/><line x1="19" y1="4" x2="19" y2="20"/><circle cx="19" cy="7" r="2" fill="currentColor" stroke="none"/>',
+            'lock' => '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
+            'key' => '<circle cx="8" cy="14" r="4"/><path d="M11 11 20 2M17 5l2 2M14 8l2 2"/>',
+        ];
+        $body = $icons[$name] ?? '';
+        return '<svg class="app-nav-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $body . '</svg>';
+    }
+}
+
 if (!function_exists('nav_item')) {
     function nav_item(string $key, string $href, string $label, string $active, string $icon = ''): string
     {
         $cls = 'pnk-nav-item app-nav-btn' . ($key === $active ? ' is-active' : '');
-        $iconHtml = $icon !== '' ? '<span class="app-nav-icon" aria-hidden="true">' . htmlspecialchars($icon, ENT_QUOTES) . '</span>' : '';
+        $iconHtml = $icon !== '' ? '<span class="app-nav-icon app-nav-icon--' . htmlspecialchars($icon, ENT_QUOTES) . '">' . nav_icon_svg($icon) . '</span>' : '';
         return '<a class="' . $cls . '" href="' . htmlspecialchars($href, ENT_QUOTES) . '" title="' . htmlspecialchars($label, ENT_QUOTES) . '">' . $iconHtml . '<span class="app-nav-label">' . htmlspecialchars($label, ENT_QUOTES) . '</span></a>';
     }
 }
@@ -78,7 +102,10 @@ if (!function_exists('nav_item')) {
     </div>
     <div class="app-player-bar__info">
       <div class="app-player-bar__meta">
-        <div class="app-player-bar__title" id="np-title">-</div>
+        <div class="app-player-bar__title-row">
+          <span class="app-player-bar__title" id="np-title">-</span>
+          <span class="app-reaction-badge" id="np-reactions" hidden>❤ <span id="np-reactions-count">0</span></span>
+        </div>
         <div class="app-player-bar__artist" id="np-artist">-</div>
       </div>
       <div class="app-player-bar__next">
@@ -105,28 +132,28 @@ if (!function_exists('nav_item')) {
     <h6 class="app-sidebar-heading">Party</h6>
     <nav class="pnk-nav">
       <div class="app-nav-item-wrap">
-        <?= nav_item('player', app_url('player.php'), 'Player', $activeNav, '🎧') ?>
+        <?= nav_item('player', app_url('player.php'), 'Player', $activeNav, 'player') ?>
         <span class="app-nav-badge" id="nav-playlist-badge"<?= $playlistCountForNav > 0 ? '' : ' hidden' ?>><?= $playlistCountForNav ?></span>
       </div>
-      <?= nav_item('requests', app_url('admin/requests.php'), 'Wunschliste', $activeNav, '🎶') ?>
+      <?= nav_item('requests', app_url('admin/requests.php'), 'Wunschliste', $activeNav, 'wishlist') ?>
     </nav>
     <h6 class="app-sidebar-heading">Verwaltung</h6>
     <nav class="pnk-nav">
-      <?= nav_item('dashboard', app_url('admin/index.php'), 'Uebersicht', $activeNav, '📊') ?>
-      <?= nav_item('library', app_url('admin/library.php'), 'Bibliothek', $activeNav, '💿') ?>
-      <?= nav_item('users', app_url('admin/users.php'), 'Benutzer', $activeNav, '👤') ?>
-      <?= nav_item('settings', app_url('admin/settings.php'), 'Einstellungen', $activeNav, '⚙️') ?>
+      <?= nav_item('dashboard', app_url('admin/index.php'), 'Uebersicht', $activeNav, 'dashboard') ?>
+      <?= nav_item('library', app_url('admin/library.php'), 'Bibliothek', $activeNav, 'library') ?>
+      <?= nav_item('users', app_url('admin/users.php'), 'Benutzer', $activeNav, 'users') ?>
+      <?= nav_item('settings', app_url('admin/settings.php'), 'Einstellungen', $activeNav, 'settings') ?>
     </nav>
 
     <?php if (Auth::isLoggedIn()): ?>
     <div class="app-sidebar-bottom">
       <?php if ($hasLockPin): ?>
         <button class="pnk-nav-item app-nav-btn app-lock-nav-btn" id="btn-lock" type="button" title="Player sperren">
-          <span class="app-nav-icon" aria-hidden="true">🔒</span><span class="app-nav-label">Player sperren</span>
+          <span class="app-nav-icon app-nav-icon--lock"><?= nav_icon_svg('lock') ?></span><span class="app-nav-label">Player sperren</span>
         </button>
       <?php else: ?>
         <a class="pnk-nav-item app-nav-btn app-lock-nav-btn" href="<?= app_url('admin/settings.php') ?>" title="PIN einrichten, um den Player sperren zu koennen">
-          <span class="app-nav-icon" aria-hidden="true">🔑</span><span class="app-nav-label">PIN einrichten</span>
+          <span class="app-nav-icon app-nav-icon--key"><?= nav_icon_svg('key') ?></span><span class="app-nav-label">PIN einrichten</span>
         </a>
       <?php endif; ?>
       <button class="app-sidebar-version" id="btn-about" type="button" title="Über diese App">v<?= htmlspecialchars(ltrim(APP_VERSION, 'v')) ?></button>
