@@ -6,11 +6,18 @@ use App\Csrf;
 use App\GuestIdentity;
 use App\Repositories\SettingRepository;
 
+$settings = new SettingRepository();
+// Party ist "offline" geschaltet (siehe api/live_status.php, Sidebar-
+// Schalter) - Seite zeigt dann nur noch eine leere "Offline"-Anzeige, ganz
+// ohne Gaeste-Interaktion/Cookies/Abfragen.
+if ($settings->get('app_live', '1') === '0') {
+    require __DIR__ . '/templates/offline.php';
+    exit;
+}
+
 // Legt bei Bedarf gleich beim Seitenaufruf das Wiedererkennungs-Cookie an
 // (nicht erst beim ersten Wunsch), damit das Limit zuverlaessig greift.
 GuestIdentity::id();
-
-$settings = new SettingRepository();
 $pageTitle = 'Musikwunsch';
 $csrfToken = Csrf::token();
 $previewSeconds = (int) $settings->get('preview_seconds', '20');

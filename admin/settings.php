@@ -5,6 +5,7 @@ require __DIR__ . '/../bootstrap.php';
 use App\Auth;
 use App\Config;
 use App\Csrf;
+use App\LogoProcessor;
 use App\Repositories\SettingRepository;
 use App\Util;
 
@@ -154,7 +155,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($currentLogoExt !== '' && $currentLogoExt !== $newExt) {
                         @unlink($qrLogoDir . '/qr_logo.' . $currentLogoExt);
                     }
-                    move_uploaded_file($_FILES['qr_logo']['tmp_name'], $qrLogoDir . '/qr_logo.' . $newExt);
+                    // Schneidet transparente Raender weg, bevor gespeichert
+                    // wird - der weisse Rahmen im QR-Code soll sich an der
+                    // sichtbaren Bildkontur orientieren, nicht an der reinen
+                    // Leinwandgroesse der hochgeladenen Datei.
+                    LogoProcessor::saveTrimmed($_FILES['qr_logo']['tmp_name'], $qrLogoDir . '/qr_logo.' . $newExt, $newExt);
                     $settings->set('qr_logo_ext', $newExt);
                     $settings->set('qr_logo_size_percent', (string) $logoSizePercent);
                     $settings->set('qr_logo_border_px', (string) $logoBorderPx);
@@ -428,34 +433,44 @@ require __DIR__ . '/../templates/admin_header.php';
     <p class="pnk-text-muted" style="margin:0 0 12px;">
       Optionales Logo in der Mitte des QR-Codes (z.B. Party-/Vereinslogo). Der QR-Code wird dafuer
       automatisch mit maximaler Fehlertoleranz (30%) erzeugt, damit er trotz Logo zuverlaessig
-      scannbar bleibt - Hintergrund und Rand um das Logo sind immer weiss.
+      scannbar bleibt. Transparente Raender im Logo werden automatisch weggeschnitten - der weisse
+      Rahmen orientiert sich am sichtbaren Bildinhalt, nicht an der Leinwandgroesse der Datei.
     </p>
     <form method="post" action="<?= app_url('admin/settings.php') ?>" enctype="multipart/form-data">
       <?= Csrf::field() ?>
       <input type="hidden" name="form" value="qr_logo">
-      <label class="pnk-label">Logo-Datei (PNG, JPG oder WEBP)</label>
-      <input class="pnk-input" type="file" name="qr_logo" accept="image/png,image/jpeg,image/webp">
-      <?php if ($qrLogoExt !== ''): ?>
-        <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0;">
-          Aktuell ist ein Logo hinterlegt - neue Datei waehlen zum Ersetzen, oder unten entfernen.
-        </p>
-      <?php endif; ?>
+      <div style="display:flex; gap:24px; flex-wrap:wrap; align-items:flex-start;">
+        <div style="flex:0 0 auto;">
+          <canvas id="qr-logo-live-preview" width="220" height="220" style="display:block; width:220px; height:220px; border-radius:var(--pnk-radius); background:#fff;"></canvas>
+          <p class="pnk-text-muted" style="font-size:11px; margin:6px 0 0; max-width:220px;">Live-Vorschau - zeigt auch ein gerade erst ausgewaehltes, noch nicht gespeichertes Bild.</p>
+        </div>
+        <div style="flex:1 1 260px; min-width:220px;">
+          <label class="pnk-label">Logo-Datei (PNG, JPG oder WEBP)</label>
+          <input class="pnk-input" type="file" id="qr-logo-file" name="qr_logo" accept="image/png,image/jpeg,image/webp">
+          <?php if ($qrLogoExt !== ''): ?>
+            <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0;">
+              Aktuell ist ein Logo hinterlegt - neue Datei waehlen zum Ersetzen, oder unten entfernen.
+            </p>
+          <?php endif; ?>
 
-      <label class="pnk-label" style="margin-top:16px;">Logo-Größe (<span id="qr-logo-size-value"><?= (int) $qrLogoSizePercent ?></span>%)</label>
-      <input type="range" id="qr-logo-size-slider" name="qr_logo_size_percent" min="5" max="40" step="1" value="<?= (int) $qrLogoSizePercent ?>" style="width:100%; max-width:320px; display:block;">
+          <label class="pnk-label" style="margin-top:16px;">Logo-Größe (<span id="qr-logo-size-value"><?= (int) $qrLogoSizePercent ?></span>%)</label>
+          <input type="range" id="qr-logo-size-slider" name="qr_logo_size_percent" min="5" max="40" step="1" value="<?= (int) $qrLogoSizePercent ?>" style="width:100%; max-width:320px; display:block;">
 
-      <label class="pnk-label" style="margin-top:16px;">Weißer Rand um Logo (<span id="qr-logo-border-value"><?= (int) $qrLogoBorderPx ?></span>px)</label>
-      <input type="range" id="qr-logo-border-slider" name="qr_logo_border_px" min="0" max="30" step="1" value="<?= (int) $qrLogoBorderPx ?>" style="width:100%; max-width:320px; display:block;">
-      <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0;">
-        Schieberegler bewegen aktualisiert die QR-Vorschau oben live zum Testen - erst "Speichern"
-        uebernimmt die Aenderung dauerhaft.
-      </p>
+          <label class="pnk-label" style="margin-top:16px;">Weißer Rand um Logo (<span id="qr-logo-border-value"><?= (int) $qrLogoBorderPx ?></span>px)</label>
+          <input type="range" id="qr-logo-border-slider" name="qr_logo_border_px" min="0" max="30" step="1" value="<?= (int) $qrLogoBorderPx ?>" style="width:100%; max-width:320px; display:block;">
+          <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0;">
+            Datei waehlen oder Schieberegler bewegen aktualisiert die Vorschau links sofort - erst
+            "Speichern" uebernimmt die Aenderung dauerhaft (dabei werden transparente Raender
+            serverseitig zugeschnitten, die Vorschau ist bis dahin eine Annaeherung).
+          </p>
 
-      <div style="display:flex; gap:10px; margin-top:16px;">
-        <button class="pnk-btn pnk-btn--primary" type="submit">Speichern</button>
-        <?php if ($qrLogoExt !== ''): ?>
-          <button class="pnk-btn pnk-btn--ghost" type="submit" name="logo_action" value="remove" formnovalidate>Logo entfernen</button>
-        <?php endif; ?>
+          <div style="display:flex; gap:10px; margin-top:16px;">
+            <button class="pnk-btn pnk-btn--primary" type="submit">Speichern</button>
+            <?php if ($qrLogoExt !== ''): ?>
+              <button class="pnk-btn pnk-btn--ghost" type="submit" name="logo_action" value="remove" formnovalidate>Logo entfernen</button>
+            <?php endif; ?>
+          </div>
+        </div>
       </div>
     </form>
 

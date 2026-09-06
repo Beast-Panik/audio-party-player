@@ -11,37 +11,27 @@ $override = $settings->get('request_url_override', '');
 $requestUrl = ($override ?: rtrim(Config::get('app_url', ''), '/')) . app_url('request.php');
 
 $logoExt = $settings->get('qr_logo_ext', '');
-$logoDataUri = null;
-if ($logoExt !== '') {
-    $logoPath = dirname(__DIR__) . '/data/qr_logo.' . $logoExt;
-    if (is_file($logoPath)) {
-        $mime = match ($logoExt) {
-            'png' => 'image/png',
-            'webp' => 'image/webp',
-            default => 'image/jpeg',
-        };
-        $logoDataUri = 'data:' . $mime . ';base64,' . base64_encode(file_get_contents($logoPath));
+$logoPath = null;
+// Fuer die client-seitige Live-Vorschau in den Einstellungen (siehe
+// initQrLogoPreview() in app.js): liefert den reinen QR-Code ohne Logo als
+// Basis-Bild, auf das die Vorschau das (evtl. noch nicht gespeicherte)
+// Logo per <canvas> selbst zeichnet.
+$noLogo = isset($_GET['no_logo']);
+if (!$noLogo && $logoExt !== '') {
+    $candidate = dirname(__DIR__) . '/data/qr_logo.' . $logoExt;
+    if (is_file($candidate)) {
+        $logoPath = $candidate;
     }
 }
 
-// Die Live-Vorschau in den Einstellungen (Schieberegler fuer Groesse/Rand)
-// kann die gespeicherten Werte per Query-Param ueberschreiben, bevor sie
-// gespeichert sind - sonst gelten die gespeicherten Werte. Harmlos auch
-// oeffentlich aufrufbar (reine Anzeige-Variante derselben oeffentlichen
-// URL), daher keine Auth-Pruefung noetig - Grenzen werden trotzdem serverseitig
-// erzwungen (siehe QrCode::svg()).
-$logoSizePercent = isset($_GET['logo_size_percent'])
-    ? (int) $_GET['logo_size_percent']
-    : (int) $settings->get('qr_logo_size_percent', '20');
-$logoBorderPx = isset($_GET['logo_border_px'])
-    ? (int) $_GET['logo_border_px']
-    : (int) $settings->get('qr_logo_border_px', '6');
+$logoSizePercent = (int) $settings->get('qr_logo_size_percent', '20');
+$logoBorderPx = (int) $settings->get('qr_logo_border_px', '6');
 
 header('Content-Type: image/svg+xml');
 header('Cache-Control: no-store');
 
 try {
-    echo QrCode::svg($requestUrl, 8, 4, '#000000', '#ffffff', QrCode::ECC_H, $logoDataUri, $logoSizePercent, $logoBorderPx);
+    echo QrCode::svg($requestUrl, 8, 4, '#000000', '#ffffff', QrCode::ECC_H, $logoPath, $logoExt, $logoSizePercent, $logoBorderPx);
 } catch (\Throwable $e) {
     http_response_code(500);
     header('Content-Type: text/plain; charset=utf-8');

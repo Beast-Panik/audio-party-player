@@ -61,13 +61,12 @@ final class QrCode
      * $preferredEcc auf ECC_H (30% Fehlertoleranz) stehen, damit ein
      * ueberdecktes Zentrum den Code nicht unlesbar macht.
      *
-     * $logoDataUri: vollstaendige data:-URI (z.B. "data:image/png;base64,...")
-     * oder null fuer kein Logo. $logoSizePercent ist die Kantenlaenge des
-     * Logos selbst relativ zur QR-Gesamtbreite (inkl. Ruhezone), das Logo
-     * wird darin proportional eingepasst (preserveAspectRatio). Um das Logo
-     * wird zusaetzlich ein weisses Rechteck mit $logoBorderPx Rand gezogen -
-     * Hintergrund dahinter ist damit immer garantiert weiss, unabhaengig von
-     * $light.
+     * $logoPath/$logoExt: Pfad + Dateiendung (png/jpg/webp) des bereits
+     * hochgeladenen (und randlos zugeschnittenen, siehe LogoProcessor)
+     * Logos, oder $logoPath=null fuer kein Logo. Die eigentliche Bild-
+     * Komposition (Logo einpassen + konturfolgender weisser Rahmen)
+     * uebernimmt LogoProcessor::composite() - braucht dafuer die
+     * GD-Extension; ist sie nicht verfuegbar, wird kein Logo angezeigt.
      */
     public static function svg(
         string $text,
@@ -76,7 +75,8 @@ final class QrCode
         string $dark = '#000000',
         string $light = '#ffffff',
         int $preferredEcc = self::ECC_M,
-        ?string $logoDataUri = null,
+        ?string $logoPath = null,
+        string $logoExt = '',
         int $logoSizePercent = 20,
         int $logoBorderPx = 6
     ): string {
@@ -104,10 +104,7 @@ final class QrCode
         $svg .= '<rect width="100%" height="100%" fill="' . htmlspecialchars($light, ENT_QUOTES) . '"/>';
         $svg .= '<g fill="' . htmlspecialchars($dark, ENT_QUOTES) . '">' . implode('', $rows) . '</g>';
 
-        if ($logoDataUri !== null) {
-            // Modul-Rechtecke unter dem Logo werden bewusst nicht weggelassen
-            // (einfacher, gleiches Endergebnis) - das weisse Kasten-Rechteck
-            // deckt sie vollstaendig ab, bevor das Logo darueber gezeichnet wird.
+        if ($logoPath !== null) {
             $logoSizePercent = max(0, min(60, $logoSizePercent));
             $logoBorderPx = max(0, min(60, $logoBorderPx));
             $logoSize = (int) round($dim * ($logoSizePercent / 100));
@@ -129,11 +126,16 @@ final class QrCode
                 $boxSize = $logoSize + $logoBorderPx * 2;
             }
 
-            $boxPos = (int) round(($dim - $boxSize) / 2);
-            $logoPos = $boxPos + $logoBorderPx;
-            $radius = max(2, (int) round($scale * 0.5));
-            $svg .= '<rect x="' . $boxPos . '" y="' . $boxPos . '" width="' . $boxSize . '" height="' . $boxSize . '" rx="' . $radius . '" fill="#ffffff"/>';
-            $svg .= '<image x="' . $logoPos . '" y="' . $logoPos . '" width="' . $logoSize . '" height="' . $logoSize . '" href="' . htmlspecialchars($logoDataUri, ENT_QUOTES) . '" preserveAspectRatio="xMidYMid meet"/>';
+            // Fertiges Box-Bild (Logo + konturfolgender weisser Rahmen, alles
+            // andere transparent) von LogoProcessor zusammensetzen lassen -
+            // liefert null, wenn GD fehlt/das Bild kaputt ist, dann einfach
+            // ganz ohne Logo weitermachen statt einen kaputten QR-Code zu
+            // riskieren.
+            $composited = LogoProcessor::composite($logoPath, $logoExt, $boxSize, $logoBorderPx);
+            if ($composited !== null) {
+                $boxPos = (int) round(($dim - $boxSize) / 2);
+                $svg .= '<image x="' . $boxPos . '" y="' . $boxPos . '" width="' . $boxSize . '" height="' . $boxSize . '" href="' . htmlspecialchars($composited, ENT_QUOTES) . '"/>';
+            }
         }
 
         $svg .= '</svg>';

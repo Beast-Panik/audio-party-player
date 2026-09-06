@@ -468,6 +468,39 @@ html.app-sidebar-preload-collapsed .app-shell {
   margin-top: auto;
   padding-top: var(--pnk-space-3);
 }
+/* Live/Offline-Schalter (siehe api/live_status.php) - "ON AIR" blinkt rot
+   waehrend die Wunsch-/Anzeige-Seite fuer Gaeste erreichbar ist, "OFFLINE"
+   ist bewusst gedaempft/unauffaellig. Eckiger Punkt statt rundem Kreis,
+   wie alle Formen in diesem Design. */
+.app-live-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  font: inherit;
+  font-weight: 700;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  margin-bottom: 6px;
+}
+.app-live-toggle-dot {
+  width: 8px;
+  height: 8px;
+  flex-shrink: 0;
+  border-radius: var(--pnk-radius-sm);
+  background: var(--pnk-text-dim);
+}
+.app-live-toggle-btn.is-live {
+  color: var(--pnk-danger);
+}
+.app-live-toggle-btn.is-live .app-live-toggle-dot {
+  background: var(--pnk-danger);
+  animation: app-countdown-blink 1.2s step-start infinite;
+}
+.app-live-toggle-btn.is-offline {
+  color: var(--pnk-text-dim);
+}
 .app-lock-nav-btn {
   width: 100%;
   text-align: left;

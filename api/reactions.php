@@ -4,6 +4,7 @@ require __DIR__ . '/../bootstrap.php';
 
 use App\Csrf;
 use App\GuestIdentity;
+use App\Repositories\SettingRepository;
 use App\Repositories\TrackReactionRepository;
 use App\Repositories\TrackRepository;
 
@@ -20,6 +21,13 @@ function json_fail(int $code, string $message): void
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     json_fail(405, 'Methode nicht erlaubt.');
+}
+
+// Party ist "offline" geschaltet - Gaeste-Seite zeigt ohnehin nur eine
+// leere Anzeige (siehe request.php), dieser Endpunkt sollte dann aber auch
+// direkt aufgerufen keine Wirkung mehr haben.
+if ((new SettingRepository())->get('app_live', '1') === '0') {
+    json_fail(403, 'Die Party ist gerade offline.');
 }
 
 $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;

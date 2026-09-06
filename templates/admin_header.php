@@ -12,6 +12,7 @@ $activeNav = $activeNav ?? '';
 $settingsRepo = new SettingRepository();
 $appName = $settingsRepo->get('app_name', 'Party Player - pan1k.de');
 $hasLockPin = (bool) $settingsRepo->get('lock_pin_hash');
+$appLive = $settingsRepo->get('app_live', '1') !== '0';
 $tickerEnabled = $settingsRepo->get('ticker_enabled', '0') === '1';
 $countdownEnabled = $settingsRepo->get('countdown_enabled', '0') === '1';
 $countdownFontSize = (int) $settingsRepo->get('countdown_font_size', '22');
@@ -147,6 +148,10 @@ if (!function_exists('nav_item')) {
 
     <?php if (Auth::isLoggedIn()): ?>
     <div class="app-sidebar-bottom">
+      <button class="app-nav-btn app-live-toggle-btn <?= $appLive ? 'is-live' : 'is-offline' ?>" id="btn-live-toggle" type="button" title="<?= $appLive ? 'Party beenden (offline gehen) - setzt Gäste-/Wunschdaten zurück' : 'Party starten (live gehen) - setzt Gäste-/Wunschdaten zurück' ?>">
+        <span class="app-live-toggle-dot" aria-hidden="true"></span>
+        <span class="app-nav-label"><?= $appLive ? 'ON AIR' : 'OFFLINE' ?></span>
+      </button>
       <?php if ($hasLockPin): ?>
         <button class="pnk-nav-item app-nav-btn app-lock-nav-btn" id="btn-lock" type="button" title="Player sperren">
           <span class="app-nav-icon app-nav-icon--lock"><?= nav_icon_svg('lock') ?></span><span class="app-nav-label">Player sperren</span>

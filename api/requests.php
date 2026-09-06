@@ -130,6 +130,15 @@ if ($method === 'POST') {
         json_fail(400, 'Ungueltiges Formular. Bitte Seite neu laden.');
     }
 
+    // Party ist "offline" geschaltet - die Gaeste-Aktionen (Name setzen,
+    // Wunsch einreichen) sollen dann auch bei direktem API-Aufruf keine
+    // Wirkung mehr haben (die Wunschseite selbst zeigt ohnehin nur eine
+    // leere Anzeige, siehe request.php). Admin-Aktionen weiter unten
+    // bleiben davon unberuehrt.
+    if (in_array($action, ['set_name', 'create'], true) && (new SettingRepository())->get('app_live', '1') === '0') {
+        json_fail(403, 'Die Party ist gerade offline.');
+    }
+
     if ($action === 'set_name') {
         // Namens-Sperre: der erste fuer dieses Geraet (Gast-Cookie) gesetzte
         // Name gilt dauerhaft, ein spaeterer Aenderungsversuch wird

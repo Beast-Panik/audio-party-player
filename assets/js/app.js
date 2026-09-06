@@ -1038,26 +1038,231 @@
    * einzelnen Pixel Ziehen ein Request rausgeht.
    * ================================================================== */
   function initQrLogoPreview() {
+    var canvas = document.getElementById('qr-logo-live-preview');
     var sizeSlider = document.getElementById('qr-logo-size-slider');
     var borderSlider = document.getElementById('qr-logo-border-slider');
-    var preview = document.getElementById('qr-code-preview');
-    if (!sizeSlider || !borderSlider || !preview) return;
+    var fileInput = document.getElementById('qr-logo-file');
+    if (!canvas || !sizeSlider || !borderSlider) return;
 
     var sizeValue = document.getElementById('qr-logo-size-value');
     var borderValue = document.getElementById('qr-logo-border-value');
-    var debounceTimer = null;
+    var ctx = canvas.getContext('2d');
+    // Gleiche Grenze wie QrCode::MAX_LOGO_BOX_PERCENT (PHP) - die echte
+    // Sicherheitsgrenze gilt serverseitig beim Speichern, hier nur fuer eine
+    // realistische Annaeherung in der Live-Vorschau.
+    var SAFE_MAX_BOX_PERCENT = 0.15;
 
-    function updatePreview() {
-      if (sizeValue) sizeValue.textContent = sizeSlider.value;
-      if (borderValue) borderValue.textContent = borderSlider.value;
-      clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(function () {
-        preview.src = api('api/qr.php') + '?logo_size_percent=' + encodeURIComponent(sizeSlider.value) +
-          '&logo_border_px=' + encodeURIComponent(borderSlider.value) + '&_=' + Date.now();
-      }, 80);
+    var baseQrImg = null;
+    var logoImg = null;
+    var logoObjectUrl = null;
+    var logoTrim = null; // {x,y,w,h} in logoImg-Pixelraum, oder null (kein Zuschnitt noetig/moeglich)
+
+    function loadImage(src) {
+      return new Promise(function (resolve, reject) {
+        var img = new Image();
+        img.onload = function () { resolve(img); };
+        img.onerror = reject;
+        img.src = src;
+      });
     }
-    sizeSlider.addEventListener('input', updatePreview);
-    borderSlider.addEventListener('input', updatePreview);
+
+    /** Client-seitige Annaeherung an LogoProcessor::alphaBoundingBox() (PHP) -
+     * findet die Bounding-Box der nicht (fast) komplett transparenten Pixel,
+     * damit der weisse Rahmen sich schon in der Vorschau an der sichtbaren
+     * Bildkontur orientiert statt an der reinen Leinwandgroesse. */
+    function computeAlphaTrim(img) {
+      var w = img.naturalWidth, h = img.naturalHeight;
+      if (!w || !h) return null;
+      var off = document.createElement('canvas');
+      off.width = w;
+      off.height = h;
+      var octx = off.getContext('2d');
+      octx.drawImage(img, 0, 0);
+      var data;
+      try {
+        data = octx.getImageData(0, 0, w, h).data;
+      } catch (e) {
+        return null;
+      }
+      var minX = w, minY = h, maxX = -1, maxY = -1;
+      for (var y = 0; y < h; y++) {
+        for (var x = 0; x < w; x++) {
+          var alpha = data[(y * w + x) * 4 + 3];
+          if (alpha > 10) {
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+            if (y < minY) minY = y;
+            if (y > maxY) maxY = y;
+          }
+        }
+      }
+      if (maxX < 0) return null;
+      if (minX === 0 && minY === 0 && maxX === w - 1 && maxY === h - 1) return null;
+      return { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 };
+    }
+
+    /** Client-seitige Entsprechung von LogoProcessor::dilateMask() (PHP) -
+     * zweistufige Chamfer-Distanztransformation, "blaeht" eine Alpha-Maske
+     * um $radius Pixel auf. Ergibt einen der Bildkontur folgenden, gleich-
+     * maessig dicken Rahmen statt eines rechteckigen Kastens (bei einem
+     * runden Logo also einen runden Rahmen). mask/Rueckgabe: Uint8Array,
+     * 1 = innerhalb der (aufgeblaehten) Flaeche. */
+    function dilateMask(mask, w, h, radius) {
+      var inf = w + h;
+      var dist = new Float64Array(w * h);
+      for (var i = 0; i < w * h; i++) dist[i] = mask[i] ? 0 : inf;
+      var d1 = 1, d2 = Math.SQRT2;
+      var idx = function (x, y) { return y * w + x; };
+      var x, y, v;
+      for (y = 0; y < h; y++) {
+        for (x = 0; x < w; x++) {
+          v = dist[idx(x, y)];
+          if (x > 0) v = Math.min(v, dist[idx(x - 1, y)] + d1);
+          if (y > 0) {
+            v = Math.min(v, dist[idx(x, y - 1)] + d1);
+            if (x > 0) v = Math.min(v, dist[idx(x - 1, y - 1)] + d2);
+            if (x < w - 1) v = Math.min(v, dist[idx(x + 1, y - 1)] + d2);
+          }
+          dist[idx(x, y)] = v;
+        }
+      }
+      for (y = h - 1; y >= 0; y--) {
+        for (x = w - 1; x >= 0; x--) {
+          v = dist[idx(x, y)];
+          if (x < w - 1) v = Math.min(v, dist[idx(x + 1, y)] + d1);
+          if (y < h - 1) {
+            v = Math.min(v, dist[idx(x, y + 1)] + d1);
+            if (x < w - 1) v = Math.min(v, dist[idx(x + 1, y + 1)] + d2);
+            if (x > 0) v = Math.min(v, dist[idx(x - 1, y + 1)] + d2);
+          }
+          dist[idx(x, y)] = v;
+        }
+      }
+      var out = new Uint8Array(w * h);
+      for (i = 0; i < w * h; i++) out[i] = dist[i] <= radius ? 1 : 0;
+      return out;
+    }
+
+    /** Client-seitige Entsprechung von LogoProcessor::composite() (PHP) -
+     * passt das (zugeschnittene) Logo in eine boxSize-grosse Flaeche ein und
+     * zeichnet einen konturfolgenden weissen Rahmen (per dilateMask) davor.
+     * Gibt ein <canvas> zurueck, oder null bei ungueltigen Massen. */
+    function buildLogoBox(boxSize, borderPx) {
+      if (boxSize <= 0) return null;
+      var srcX = 0, srcY = 0, srcW = logoImg.naturalWidth, srcH = logoImg.naturalHeight;
+      if (logoTrim) {
+        srcX = logoTrim.x; srcY = logoTrim.y; srcW = logoTrim.w; srcH = logoTrim.h;
+      }
+      if (srcW <= 0 || srcH <= 0) return null;
+
+      var innerMax = Math.max(1, boxSize - borderPx * 2);
+      var scale = Math.min(innerMax / srcW, innerMax / srcH);
+      var fitW = Math.max(1, Math.round(srcW * scale));
+      var fitH = Math.max(1, Math.round(srcH * scale));
+      var offX = Math.round((boxSize - fitW) / 2);
+      var offY = Math.round((boxSize - fitH) / 2);
+
+      var fitted = document.createElement('canvas');
+      fitted.width = boxSize;
+      fitted.height = boxSize;
+      var fctx = fitted.getContext('2d');
+      fctx.clearRect(0, 0, boxSize, boxSize);
+      fctx.drawImage(logoImg, srcX, srcY, srcW, srcH, offX, offY, fitW, fitH);
+
+      var imgData;
+      try {
+        imgData = fctx.getImageData(0, 0, boxSize, boxSize);
+      } catch (e) {
+        return null;
+      }
+      var mask = new Uint8Array(boxSize * boxSize);
+      for (var i = 0; i < boxSize * boxSize; i++) {
+        mask[i] = imgData.data[i * 4 + 3] > 25 ? 1 : 0;
+      }
+      var dilated = borderPx > 0 ? dilateMask(mask, boxSize, boxSize, borderPx) : mask;
+
+      var out = document.createElement('canvas');
+      out.width = boxSize;
+      out.height = boxSize;
+      var octx = out.getContext('2d');
+      var outData = octx.createImageData(boxSize, boxSize);
+      for (var j = 0; j < boxSize * boxSize; j++) {
+        if (dilated[j]) {
+          outData.data[j * 4] = 255;
+          outData.data[j * 4 + 1] = 255;
+          outData.data[j * 4 + 2] = 255;
+          outData.data[j * 4 + 3] = 255;
+        }
+      }
+      octx.putImageData(outData, 0, 0);
+      octx.drawImage(fitted, 0, 0);
+      return out;
+    }
+
+    function draw() {
+      if (!baseQrImg) return;
+      var dim = baseQrImg.naturalWidth;
+      canvas.width = dim;
+      canvas.height = dim;
+      ctx.clearRect(0, 0, dim, dim);
+      ctx.drawImage(baseQrImg, 0, 0, dim, dim);
+      if (!logoImg) return;
+
+      var logoSize = Math.round(dim * (parseInt(sizeSlider.value, 10) / 100));
+      var borderPx = parseInt(borderSlider.value, 10);
+      var boxSize = logoSize + borderPx * 2;
+      var safeMax = Math.floor(dim * SAFE_MAX_BOX_PERCENT);
+      if (boxSize > safeMax && boxSize > 0) {
+        var ratio = safeMax / boxSize;
+        logoSize = Math.floor(logoSize * ratio);
+        borderPx = Math.floor(borderPx * ratio);
+        boxSize = logoSize + borderPx * 2;
+      }
+      if (boxSize <= 0) return;
+      var boxPos = Math.round((dim - boxSize) / 2);
+      var boxCanvas = buildLogoBox(boxSize, borderPx);
+      if (boxCanvas) {
+        ctx.drawImage(boxCanvas, boxPos, boxPos);
+      }
+    }
+
+    /** Laedt das Logo neu - entweder die gerade erst (noch nicht gespeicherte)
+     * ausgewaehlte Datei, oder sonst das aktuell gespeicherte Logo. */
+    function reloadLogo() {
+      var src;
+      if (fileInput && fileInput.files && fileInput.files[0]) {
+        if (logoObjectUrl) URL.revokeObjectURL(logoObjectUrl);
+        logoObjectUrl = URL.createObjectURL(fileInput.files[0]);
+        src = logoObjectUrl;
+      } else {
+        src = api('api/qr_logo_raw.php') + '?_=' + Date.now();
+      }
+      loadImage(src).then(function (img) {
+        logoImg = img;
+        logoTrim = computeAlphaTrim(img);
+        draw();
+      }).catch(function () {
+        logoImg = null;
+        logoTrim = null;
+        draw();
+      });
+    }
+
+    loadImage(api('api/qr.php') + '?no_logo=1').then(function (img) {
+      baseQrImg = img;
+      draw();
+    });
+    reloadLogo();
+
+    sizeSlider.addEventListener('input', function () {
+      if (sizeValue) sizeValue.textContent = sizeSlider.value;
+      draw();
+    });
+    borderSlider.addEventListener('input', function () {
+      if (borderValue) borderValue.textContent = borderSlider.value;
+      draw();
+    });
+    if (fileInput) fileInput.addEventListener('change', reloadLogo);
   }
 
   /* ================================================================== *
@@ -1139,6 +1344,37 @@
   }
   window.APP_INIT_PAGE = initPageWidgets;
   initPageWidgets();
+
+  /* ================================================================== *
+   * Live/Offline-Schalter (siehe api/live_status.php) - schaltet Wunsch-
+   * und Anzeige-Seite fuer Gaeste frei/leer und setzt dabei die komplette
+   * Gaeste-/Wunschliste zurueck. Sicherheitsabfrage nur vor dem Offline-
+   * Gehen (Live-Gehen ist der erwartete "neue Party startet"-Fall). Lebt
+   * im Kopfbereich, wird von der Soft-Navigation nie angefasst.
+   * ================================================================== */
+  var liveToggleBtn = document.getElementById('btn-live-toggle');
+  if (liveToggleBtn) {
+    liveToggleBtn.addEventListener('click', function () {
+      var goingLive = liveToggleBtn.classList.contains('is-offline');
+      if (!goingLive) {
+        var ok = window.confirm(
+          'Wirklich offline gehen?\n\n' +
+          'Die Wunsch-Seite und die Anzeige-Seite zeigen Gästen dann nur noch "Offline" ' +
+          'und sind nicht mehr nutzbar. Außerdem werden dabei ALLE Gästedaten und die ' +
+          'komplette Wunschliste unwiderruflich zurückgesetzt.'
+        );
+        if (!ok) return;
+      }
+      liveToggleBtn.disabled = true;
+      postJson(api('api/live_status.php'), { live: goingLive, csrf_token: CSRF }).then(function (res) {
+        if (res.ok && res.body && res.body.ok) {
+          window.location.reload();
+        } else {
+          liveToggleBtn.disabled = false;
+        }
+      });
+    });
+  }
 
   /* ================================================================== *
    * Player-Sperre (PIN) - rein clientseitiges Blur-Overlay. Die Sperre
