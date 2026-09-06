@@ -1030,6 +1030,37 @@
   }
 
   /* ================================================================== *
+   * QR-Code-Logo-Vorschau (admin/settings.php) - Schieberegler fuer
+   * Logo-Groesse/Rand aktualisieren die echte QR-Code-Vorschau live per
+   * api/qr.php-Aufruf mit Override-Query-Params (kein separater Preview-
+   * Renderpfad - WYSIWYG garantiert, da derselbe PHP-Code wie beim
+   * gespeicherten QR-Code laeuft). Debounced, damit nicht bei jedem
+   * einzelnen Pixel Ziehen ein Request rausgeht.
+   * ================================================================== */
+  function initQrLogoPreview() {
+    var sizeSlider = document.getElementById('qr-logo-size-slider');
+    var borderSlider = document.getElementById('qr-logo-border-slider');
+    var preview = document.getElementById('qr-code-preview');
+    if (!sizeSlider || !borderSlider || !preview) return;
+
+    var sizeValue = document.getElementById('qr-logo-size-value');
+    var borderValue = document.getElementById('qr-logo-border-value');
+    var debounceTimer = null;
+
+    function updatePreview() {
+      if (sizeValue) sizeValue.textContent = sizeSlider.value;
+      if (borderValue) borderValue.textContent = borderSlider.value;
+      clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(function () {
+        preview.src = api('api/qr.php') + '?logo_size_percent=' + encodeURIComponent(sizeSlider.value) +
+          '&logo_border_px=' + encodeURIComponent(borderSlider.value) + '&_=' + Date.now();
+      }, 80);
+    }
+    sizeSlider.addEventListener('input', updatePreview);
+    borderSlider.addEventListener('input', updatePreview);
+  }
+
+  /* ================================================================== *
    * Ordner-Picker (admin/library.php) - blaettert Server-Verzeichnisse
    * per api/browse_dirs.php durch, damit der absolute Pfad nicht von Hand
    * herausgefunden werden muss. Elemente existieren nur dort und werden
@@ -1101,6 +1132,7 @@
     initRecentlyPlayed();
     initScanButtons();
     initFolderPicker();
+    initQrLogoPreview();
     if (window.APP_INIT_AUTO_DJ_TOGGLE) window.APP_INIT_AUTO_DJ_TOGGLE();
     if (window.APP_REFRESH_PLAYLIST) window.APP_REFRESH_PLAYLIST();
     if (window.APP_REFRESH_QUEUE) window.APP_REFRESH_QUEUE();

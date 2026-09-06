@@ -17,7 +17,7 @@ $openSection = 'allgemein';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $form = $_POST['form'] ?? 'allgemein';
-    $openSection = $form === 'lock_pin' ? 'player_sperre' : $form;
+    $openSection = $form === 'lock_pin' ? 'player_sperre' : ($form === 'qr_logo' ? 'wunsch_seite' : $form);
 
     if ($form === 'allgemein') {
         Csrf::requireValid();
@@ -71,14 +71,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         Csrf::requireValid();
         $crossfadeSeconds = (int) ($_POST['crossfade_seconds'] ?? 3);
         $masterVolume = (int) ($_POST['master_volume'] ?? 100);
-        $pauseFadeOutMs = (int) ($_POST['pause_fade_out_ms'] ?? 300);
-        $pauseFadeInMs = (int) ($_POST['pause_fade_in_ms'] ?? 300);
+        // Im Formular in Sekunden (mit Nachkommastellen) eingegeben, intern
+        // weiterhin in Millisekunden gespeichert - praeziser fuer die
+        // JS-seitige Fade-Berechnung (siehe fadeVolume() in app.js).
+        $pauseFadeOutSeconds = (float) ($_POST['pause_fade_out_seconds'] ?? 0.3);
+        $pauseFadeInSeconds = (float) ($_POST['pause_fade_in_seconds'] ?? 0.3);
+        $pauseFadeOutMs = (int) round($pauseFadeOutSeconds * 1000);
+        $pauseFadeInMs = (int) round($pauseFadeInSeconds * 1000);
         if ($crossfadeSeconds < 1 || $crossfadeSeconds > 15) {
             $error = 'Uebergangszeit muss zwischen 1 und 15 Sekunden liegen.';
         } elseif ($masterVolume < 0 || $masterVolume > 100) {
             $error = 'Lautstaerke muss zwischen 0 und 100% liegen.';
         } elseif ($pauseFadeOutMs < 0 || $pauseFadeOutMs > 5000 || $pauseFadeInMs < 0 || $pauseFadeInMs > 5000) {
-            $error = 'Auf-/Abblendzeit muss zwischen 0 und 5000ms liegen.';
+            $error = 'Auf-/Abblendzeit muss zwischen 0 und 5 Sekunden liegen.';
         } else {
             $settings->set('crossfade_enabled', !empty($_POST['crossfade_enabled']) ? '1' : '0');
             $settings->set('crossfade_seconds', (string) $crossfadeSeconds);
@@ -117,6 +122,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $success = 'Einstellungen gespeichert.';
     }
 
+    if ($form === 'qr_logo') {
+        Csrf::requireValid();
+        $logoAction = $_POST['logo_action'] ?? 'save';
+        $qrLogoDir = dirname(__DIR__) . '/data';
+        $currentLogoExt = $settings->get('qr_logo_ext', '');
+
+        if ($logoAction === 'remove') {
+            if ($currentLogoExt !== '') {
+                @unlink($qrLogoDir . '/qr_logo.' . $currentLogoExt);
+            }
+            $settings->set('qr_logo_ext', null);
+            $success = 'Logo entfernt.';
+        } else {
+            $logoSizePercent = (int) ($_POST['qr_logo_size_percent'] ?? 20);
+            $logoBorderPx = (int) ($_POST['qr_logo_border_px'] ?? 6);
+            if ($logoSizePercent < 5 || $logoSizePercent > 40) {
+                $error = 'Logo-Groesse muss zwischen 5 und 40% liegen.';
+            } elseif ($logoBorderPx < 0 || $logoBorderPx > 30) {
+                $error = 'Weisser Rand muss zwischen 0 und 30 Pixel liegen.';
+            } elseif (!empty($_FILES['qr_logo']['tmp_name']) && is_uploaded_file($_FILES['qr_logo']['tmp_name'])) {
+                // Dateityp NICHT ueber die vom Browser gesendete Endung/den
+                // MIME-Header vertrauen, sondern die Bilddaten selbst
+                // pruefen (getimagesize() braucht dafuer keine GD-Extension).
+                $info = @getimagesize($_FILES['qr_logo']['tmp_name']);
+                $extByType = [IMAGETYPE_PNG => 'png', IMAGETYPE_JPEG => 'jpg', IMAGETYPE_WEBP => 'webp'];
+                $newExt = $info ? ($extByType[$info[2]] ?? null) : null;
+                if ($newExt === null) {
+                    $error = 'Ungueltige Bilddatei - bitte PNG, JPG oder WEBP verwenden.';
+                } else {
+                    if ($currentLogoExt !== '' && $currentLogoExt !== $newExt) {
+                        @unlink($qrLogoDir . '/qr_logo.' . $currentLogoExt);
+                    }
+                    move_uploaded_file($_FILES['qr_logo']['tmp_name'], $qrLogoDir . '/qr_logo.' . $newExt);
+                    $settings->set('qr_logo_ext', $newExt);
+                    $settings->set('qr_logo_size_percent', (string) $logoSizePercent);
+                    $settings->set('qr_logo_border_px', (string) $logoBorderPx);
+                    $success = 'Einstellungen gespeichert.';
+                }
+            } else {
+                $settings->set('qr_logo_size_percent', (string) $logoSizePercent);
+                $settings->set('qr_logo_border_px', (string) $logoBorderPx);
+                $success = 'Einstellungen gespeichert.';
+            }
+        }
+    }
+
     if ($form === 'display_screen') {
         Csrf::requireValid();
         $displayTheme = $_POST['display_theme'] ?? 'dark';
@@ -129,6 +180,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $appName = $settings->get('app_name', 'Party Player - pan1k.de');
 $requestUrlOverride = $settings->get('request_url_override', '');
 $displayTheme = $settings->get('display_theme', 'dark');
+$qrLogoExt = $settings->get('qr_logo_ext', '');
+$qrLogoSizePercent = (int) $settings->get('qr_logo_size_percent', '20');
+$qrLogoBorderPx = (int) $settings->get('qr_logo_border_px', '6');
 $requestUrl = ($requestUrlOverride ?: rtrim(Config::get('app_url', ''), '/')) . app_url('request.php');
 $guestLimitCount = (int) $settings->get('guest_limit_count', '3');
 $guestLimitMinutes = (int) $settings->get('guest_limit_minutes', '60');
@@ -278,11 +332,11 @@ require __DIR__ . '/../templates/admin_header.php';
         gehen soll.
       </p>
 
-      <label class="pnk-label" style="margin-top:20px;">Abblenden beim Pausieren (Millisekunden)</label>
-      <input class="pnk-input" type="number" min="0" max="5000" step="50" name="pause_fade_out_ms" value="<?= (int) $pauseFadeOutMs ?>" style="max-width:120px;">
+      <label class="pnk-label" style="margin-top:20px;">Abblenden beim Pausieren (Sekunden)</label>
+      <input class="pnk-input" type="number" min="0" max="5" step="0.1" name="pause_fade_out_seconds" value="<?= rtrim(rtrim(number_format($pauseFadeOutMs / 1000, 1, '.', ''), '0'), '.') ?: '0' ?>" style="max-width:120px;">
 
-      <label class="pnk-label" style="margin-top:16px;">Aufblenden beim Fortsetzen (Millisekunden)</label>
-      <input class="pnk-input" type="number" min="0" max="5000" step="50" name="pause_fade_in_ms" value="<?= (int) $pauseFadeInMs ?>" style="max-width:120px;">
+      <label class="pnk-label" style="margin-top:16px;">Aufblenden beim Fortsetzen (Sekunden)</label>
+      <input class="pnk-input" type="number" min="0" max="5" step="0.1" name="pause_fade_in_seconds" value="<?= rtrim(rtrim(number_format($pauseFadeInMs / 1000, 1, '.', ''), '0'), '.') ?: '0' ?>" style="max-width:120px;">
       <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0 0;">
         Beim Klick auf Pause/Play blendet die Lautstaerke sanft statt hart
         abzuschneiden - 0 = kein Fade (sofortiges Stoppen/Starten).
@@ -357,7 +411,7 @@ require __DIR__ . '/../templates/admin_header.php';
 
     <p class="pnk-text-muted">Ausdrucken oder auf einen Bildschirm werfen - Gäste scannen und landen direkt auf der Wunsch-Seite.</p>
     <div class="app-qr-box">
-      <img src="<?= app_url('api/qr.php') ?>" alt="QR-Code zur Wunsch-Seite" width="220" height="220">
+      <img id="qr-code-preview" src="<?= app_url('api/qr.php') ?>" alt="QR-Code zur Wunsch-Seite" width="220" height="220">
       <div>
         <label class="pnk-label">Link (falls Scannen nicht klappt)</label>
         <div class="install-box" style="display:flex; gap:8px; align-items:center; background:var(--pnk-surface-sunken); border:1px solid var(--pnk-border); border-radius:var(--pnk-radius); padding:10px 14px; max-width:420px;">
@@ -368,6 +422,42 @@ require __DIR__ . '/../templates/admin_header.php';
         </p>
       </div>
     </div>
+
+    <hr style="border:0; border-top:1px solid var(--pnk-border); margin:20px 0;">
+
+    <p class="pnk-text-muted" style="margin:0 0 12px;">
+      Optionales Logo in der Mitte des QR-Codes (z.B. Party-/Vereinslogo). Der QR-Code wird dafuer
+      automatisch mit maximaler Fehlertoleranz (30%) erzeugt, damit er trotz Logo zuverlaessig
+      scannbar bleibt - Hintergrund und Rand um das Logo sind immer weiss.
+    </p>
+    <form method="post" action="<?= app_url('admin/settings.php') ?>" enctype="multipart/form-data">
+      <?= Csrf::field() ?>
+      <input type="hidden" name="form" value="qr_logo">
+      <label class="pnk-label">Logo-Datei (PNG, JPG oder WEBP)</label>
+      <input class="pnk-input" type="file" name="qr_logo" accept="image/png,image/jpeg,image/webp">
+      <?php if ($qrLogoExt !== ''): ?>
+        <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0;">
+          Aktuell ist ein Logo hinterlegt - neue Datei waehlen zum Ersetzen, oder unten entfernen.
+        </p>
+      <?php endif; ?>
+
+      <label class="pnk-label" style="margin-top:16px;">Logo-Größe (<span id="qr-logo-size-value"><?= (int) $qrLogoSizePercent ?></span>%)</label>
+      <input type="range" id="qr-logo-size-slider" name="qr_logo_size_percent" min="5" max="40" step="1" value="<?= (int) $qrLogoSizePercent ?>" style="width:100%; max-width:320px; display:block;">
+
+      <label class="pnk-label" style="margin-top:16px;">Weißer Rand um Logo (<span id="qr-logo-border-value"><?= (int) $qrLogoBorderPx ?></span>px)</label>
+      <input type="range" id="qr-logo-border-slider" name="qr_logo_border_px" min="0" max="30" step="1" value="<?= (int) $qrLogoBorderPx ?>" style="width:100%; max-width:320px; display:block;">
+      <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0;">
+        Schieberegler bewegen aktualisiert die QR-Vorschau oben live zum Testen - erst "Speichern"
+        uebernimmt die Aenderung dauerhaft.
+      </p>
+
+      <div style="display:flex; gap:10px; margin-top:16px;">
+        <button class="pnk-btn pnk-btn--primary" type="submit">Speichern</button>
+        <?php if ($qrLogoExt !== ''): ?>
+          <button class="pnk-btn pnk-btn--ghost" type="submit" name="logo_action" value="remove" formnovalidate>Logo entfernen</button>
+        <?php endif; ?>
+      </div>
+    </form>
 
     <hr style="border:0; border-top:1px solid var(--pnk-border); margin:20px 0;">
 

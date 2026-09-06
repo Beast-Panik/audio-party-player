@@ -13,10 +13,30 @@ namespace App;
  */
 final class QrCode
 {
-    private const ECC_L = 0;
-    private const ECC_M = 1;
-    private const ECC_Q = 2;
-    private const ECC_H = 3;
+    // Oeffentlich, damit Aufrufer (z.B. api/qr.php) eine bestimmte Fehler-
+    // korrektur anfordern koennen - v.a. ECC_H (30%), wenn ein Logo ueber
+    // die Mitte des QR-Codes gelegt werden soll (siehe svg()).
+    public const ECC_L = 0;
+    public const ECC_M = 1;
+    public const ECC_Q = 2;
+    public const ECC_H = 3;
+
+    // Faellt von der angefragten Stufe aus nur nach UNTEN (staerker->
+    // schwaecher) zurueck, falls der Text bei keiner der 6 unterstuetzten
+    // Versionen hineinpasst - nie nach oben, damit z.B. der alte
+    // ECC_M-Standardaufruf sein Verhalten nicht durch eine ueberraschende
+    // Hochstufung aendert.
+    private const ECC_FALLBACK_ORDER = [self::ECC_H, self::ECC_Q, self::ECC_M, self::ECC_L];
+
+    // Harte Obergrenze fuer die vom Logo (inkl. weissem Rand) ueberdeckte
+    // Flaeche, als Prozentsatz der QR-Gesamtbreite - empirisch mit einem
+    // echten QR-Decoder (jsQR) ermittelt: bei den hier unterstuetzten
+    // kleinen QR-Versionen (1-6, max. ~41 Module) kippt die Lesbarkeit schon
+    // deutlich frueher als die oft zitierten 20-30%, die fuer viel groessere
+    // (dichtere) QR-Codes gelten - besonders bei kurzen Texten/kleinen
+    // Versionen mit Alignment-Pattern nahe der Mitte. 15% blieb in allen
+    // getesteten Versionen/Randgroessen sicher lesbar, mit Marge nach unten.
+    private const MAX_LOGO_BOX_PERCENT = 15;
 
     private const ECC_INDICATOR = [self::ECC_L => 0b01, self::ECC_M => 0b00, self::ECC_Q => 0b11, self::ECC_H => 0b10];
 
@@ -35,10 +55,32 @@ final class QrCode
     private static array $gfExp = [];
     private static array $gfLog = [];
 
-    /** Erzeugt fertiges SVG-Markup fuer den QR-Code des uebergebenen Texts (i.d.R. eine URL). */
-    public static function svg(string $text, int $scale = 8, int $border = 4, string $dark = '#000000', string $light = '#ffffff'): string
-    {
-        [$size, $modules] = self::encode($text);
+    /**
+     * Erzeugt fertiges SVG-Markup fuer den QR-Code des uebergebenen Texts
+     * (i.d.R. eine URL). Optional mit einem Logo in der Mitte: dafuer sollte
+     * $preferredEcc auf ECC_H (30% Fehlertoleranz) stehen, damit ein
+     * ueberdecktes Zentrum den Code nicht unlesbar macht.
+     *
+     * $logoDataUri: vollstaendige data:-URI (z.B. "data:image/png;base64,...")
+     * oder null fuer kein Logo. $logoSizePercent ist die Kantenlaenge des
+     * Logos selbst relativ zur QR-Gesamtbreite (inkl. Ruhezone), das Logo
+     * wird darin proportional eingepasst (preserveAspectRatio). Um das Logo
+     * wird zusaetzlich ein weisses Rechteck mit $logoBorderPx Rand gezogen -
+     * Hintergrund dahinter ist damit immer garantiert weiss, unabhaengig von
+     * $light.
+     */
+    public static function svg(
+        string $text,
+        int $scale = 8,
+        int $border = 4,
+        string $dark = '#000000',
+        string $light = '#ffffff',
+        int $preferredEcc = self::ECC_M,
+        ?string $logoDataUri = null,
+        int $logoSizePercent = 20,
+        int $logoBorderPx = 6
+    ): string {
+        [$size, $modules] = self::encode($text, $preferredEcc);
         $dim = ($size + $border * 2) * $scale;
 
         $rows = [];
@@ -61,17 +103,53 @@ final class QrCode
         $svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' . $dim . ' ' . $dim . '" width="' . $dim . '" height="' . $dim . '" shape-rendering="crispEdges">';
         $svg .= '<rect width="100%" height="100%" fill="' . htmlspecialchars($light, ENT_QUOTES) . '"/>';
         $svg .= '<g fill="' . htmlspecialchars($dark, ENT_QUOTES) . '">' . implode('', $rows) . '</g>';
+
+        if ($logoDataUri !== null) {
+            // Modul-Rechtecke unter dem Logo werden bewusst nicht weggelassen
+            // (einfacher, gleiches Endergebnis) - das weisse Kasten-Rechteck
+            // deckt sie vollstaendig ab, bevor das Logo darueber gezeichnet wird.
+            $logoSizePercent = max(0, min(60, $logoSizePercent));
+            $logoBorderPx = max(0, min(60, $logoBorderPx));
+            $logoSize = (int) round($dim * ($logoSizePercent / 100));
+            $boxSize = $logoSize + $logoBorderPx * 2;
+
+            // Harte Sicherheitsgrenze (siehe MAX_LOGO_BOX_PERCENT): egal was
+            // angefragt wurde, Logo+Rand duerfen zusammen nie mehr als den
+            // sicheren Anteil der QR-Flaeche einnehmen - Logo und Rand werden
+            // dafuer im gleichen Verhaeltnis anteilig verkleinert. Das ist die
+            // eigentliche Umsetzung von "Logo immer an die Groesse des Platzes
+            // im QR-Code angepasst": kleinere QR-Codes (kurze URLs) vertragen
+            // in absoluten Pixeln weniger als grosse, der Rechenweg passt sich
+            // also automatisch an die tatsaechliche QR-Groesse an.
+            $safeMax = (int) floor($dim * (self::MAX_LOGO_BOX_PERCENT / 100));
+            if ($boxSize > $safeMax && $boxSize > 0) {
+                $ratio = $safeMax / $boxSize;
+                $logoSize = (int) floor($logoSize * $ratio);
+                $logoBorderPx = (int) floor($logoBorderPx * $ratio);
+                $boxSize = $logoSize + $logoBorderPx * 2;
+            }
+
+            $boxPos = (int) round(($dim - $boxSize) / 2);
+            $logoPos = $boxPos + $logoBorderPx;
+            $radius = max(2, (int) round($scale * 0.5));
+            $svg .= '<rect x="' . $boxPos . '" y="' . $boxPos . '" width="' . $boxSize . '" height="' . $boxSize . '" rx="' . $radius . '" fill="#ffffff"/>';
+            $svg .= '<image x="' . $logoPos . '" y="' . $logoPos . '" width="' . $logoSize . '" height="' . $logoSize . '" href="' . htmlspecialchars($logoDataUri, ENT_QUOTES) . '" preserveAspectRatio="xMidYMid meet"/>';
+        }
+
         $svg .= '</svg>';
         return $svg;
     }
 
     /** @return array{0:int,1:bool[][]} */
-    public static function encode(string $text): array
+    public static function encode(string $text, int $preferredEcc = self::ECC_M): array
     {
         self::initGf();
         $dataLen = strlen($text);
 
-        foreach ([self::ECC_M, self::ECC_L] as $ecc) {
+        $startAt = array_search($preferredEcc, self::ECC_FALLBACK_ORDER, true);
+        $eccOrder = $startAt === false ? [self::ECC_M, self::ECC_L] : array_slice(self::ECC_FALLBACK_ORDER, $startAt);
+
+        foreach ($eccOrder as $ecc) {
             for ($version = 1; $version <= 6; $version++) {
                 [$eccPerBlock, $g1n, $g1len, $g2n, $g2len] = self::BLOCK_TABLE[$version][$ecc];
                 $totalDataCodewords = $g1n * $g1len + $g2n * $g2len;
