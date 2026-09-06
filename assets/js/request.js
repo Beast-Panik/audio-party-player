@@ -204,7 +204,33 @@
   var searchInputEl = document.getElementById('search-input');
   var resultsList = document.getElementById('results-list');
   var resultsTitle = document.getElementById('results-title');
+  var jumpBarEl = document.getElementById('jump-bar');
   var searchTimer = null;
+
+  /* A-Z/0-9-Sprungleiste - identisches Verhalten wie initJumpBar() in
+   * assets/js/app.js (Bibliothek), hier separat gehalten, da beide Seiten
+   * unabhaengige Skripte ohne gemeinsames Modul-System sind. */
+  var JUMP_BAR_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
+  function initJumpBar(container, onPick) {
+    if (!container) return;
+    var html = '';
+    JUMP_BAR_CHARS.forEach(function (ch) {
+      html += '<button type="button" class="app-jumpbar__btn" data-ch="' + ch + '">' + ch + '</button>';
+    });
+    container.innerHTML = html;
+    container.querySelectorAll('.app-jumpbar__btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var wasActive = btn.classList.contains('is-active');
+        container.querySelectorAll('.app-jumpbar__btn').forEach(function (b) { b.classList.remove('is-active'); });
+        if (wasActive) {
+          onPick(null);
+        } else {
+          btn.classList.add('is-active');
+          onPick(btn.getAttribute('data-ch'));
+        }
+      });
+    });
+  }
 
   function renderResults(tracks) {
     stopPreview();
@@ -252,10 +278,12 @@
     });
   }
 
-  function search(q) {
+  function search(q, startsWith) {
     q = q || '';
-    if (resultsTitle) resultsTitle.textContent = q.trim() === '' ? 'Inspiration' : 'Ergebnisse';
-    fetch(api('api/tracks.php?limit=' + INSPIRATION_LIMIT + '&q=' + encodeURIComponent(q)))
+    if (resultsTitle) resultsTitle.textContent = (q.trim() === '' && !startsWith) ? 'Inspiration' : 'Ergebnisse';
+    var url = api('api/tracks.php?limit=' + INSPIRATION_LIMIT + '&q=' + encodeURIComponent(q));
+    if (startsWith) url += '&starts_with=' + encodeURIComponent(startsWith);
+    fetch(url)
       .then(function (r) { return r.json(); })
       .then(function (j) { renderResults(j.tracks || []); });
   }
@@ -263,9 +291,16 @@
   if (searchInputEl) {
     searchInputEl.addEventListener('input', function () {
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(function () { search(searchInputEl.value); }, 120);
+      searchTimer = setTimeout(function () {
+        if (jumpBarEl) jumpBarEl.querySelectorAll('.app-jumpbar__btn').forEach(function (b) { b.classList.remove('is-active'); });
+        search(searchInputEl.value);
+      }, 120);
     });
   }
+  initJumpBar(jumpBarEl, function (ch) {
+    if (searchInputEl) searchInputEl.value = '';
+    search('', ch);
+  });
 
   // Immer 40 Songs als Inspiration zeigen, auch ohne Sucheingabe.
   search('');

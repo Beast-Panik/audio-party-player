@@ -34,8 +34,12 @@ if (!empty($_GET['recently_played'])) {
 $q = trim($_GET['q'] ?? '');
 $limit = min(200, max(1, (int) ($_GET['limit'] ?? 100)));
 $offset = max(0, (int) ($_GET['offset'] ?? 0));
+// Sprungleiste (A-Z/0-9) - immer nur ein einzelnes Zeichen, alles andere wird
+// ignoriert statt als LIKE-Muster durchgereicht.
+$startsWithRaw = trim((string) ($_GET['starts_with'] ?? ''));
+$startsWith = mb_strlen($startsWithRaw) === 1 ? $startsWithRaw : null;
 
-$tracks = $repo->search($q, $limit, $offset);
+$tracks = $repo->search($q, $limit, $offset, $startsWith);
 
 $out = array_map(static function (array $t) use ($repo, $lockHours): array {
     $locked = $repo->isLocked($t, $lockHours);

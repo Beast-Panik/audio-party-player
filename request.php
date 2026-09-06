@@ -49,6 +49,7 @@ require __DIR__ . '/templates/public_header.php';
 <div class="pnk-card" id="search-card" style="margin-bottom:16px;" hidden>
   <label class="pnk-label" for="search-input">Song suchen</label>
   <input class="pnk-input pnk-search" type="text" id="search-input" placeholder="Titel, Interpret, Album oder Jahr…">
+  <div class="app-jumpbar" id="jump-bar" style="margin-top:10px;"></div>
 </div>
 
 <div id="feedback"></div>

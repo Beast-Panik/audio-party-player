@@ -12,8 +12,10 @@ require __DIR__ . '/templates/admin_header.php';
 ?>
 
 <div class="pnk-flex pnk-justify-between pnk-items-center" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">
-  <h2 style="margin:0;">Player</h2>
+  <h2 style="margin:0;">Player<?= $isSlave ? ' (Fernsteuerung)' : '' ?></h2>
+  <?php if (!$isSlave): ?>
   <span class="pnk-badge pnk-badge--accent" id="pending-badge">0 offene Wünsche</span>
+  <?php endif; ?>
 </div>
 
 <div class="pnk-card" style="margin-bottom:20px;">
@@ -24,6 +26,7 @@ require __DIR__ . '/templates/admin_header.php';
   <div id="playlist-list"><div class="app-empty">Lade Playlist…</div></div>
 </div>
 
+<?php if (!$isSlave): ?>
 <div class="pnk-card" style="margin-bottom:20px;">
   <div class="pnk-card__header">
     <span class="pnk-card__title">Wunschliste</span>
@@ -52,16 +55,19 @@ require __DIR__ . '/templates/admin_header.php';
     </label>
   </div>
 </details>
+<?php endif; ?>
 
 <div class="pnk-card">
   <div class="pnk-card__header">
     <span class="pnk-card__title">Bibliothek</span>
     <span class="pnk-text-muted" id="track-count" style="font-size:12px;"></span>
   </div>
-  <input class="pnk-input pnk-search" id="search-input" placeholder="Titel, Interpret oder Album durchsuchen…" style="margin-bottom:12px;">
+  <input class="pnk-input pnk-search" id="search-input" placeholder="Titel, Interpret oder Album durchsuchen…" style="margin-bottom:10px;">
+  <div class="app-jumpbar" id="jump-bar"></div>
   <div class="app-track-list" id="track-list"><div class="app-empty">Lade Bibliothek…</div></div>
 </div>
 
+<?php if (!$isSlave): ?>
 <details class="pnk-card app-accordion" style="margin-bottom:20px;">
   <summary class="pnk-card__header">
     <span class="pnk-card__title app-accordion__title">
@@ -77,5 +83,6 @@ require __DIR__ . '/templates/admin_header.php';
     <div id="recently-played-list"><div class="app-empty">Lade…</div></div>
   </div>
 </details>
+<?php endif; ?>
 
 <?php require __DIR__ . '/templates/admin_footer.php'; ?>

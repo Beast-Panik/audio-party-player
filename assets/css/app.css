@@ -68,6 +68,33 @@
 .app-accordion__body { padding-top: 2px; }
 
 
+.app-jumpbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.app-jumpbar__btn {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 4px;
+  border: 1px solid var(--pnk-border);
+  border-radius: var(--pnk-radius-sm);
+  background: var(--pnk-surface-sunken);
+  color: var(--pnk-text-muted);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 24px;
+  text-align: center;
+  cursor: pointer;
+}
+.app-jumpbar__btn:hover { background: var(--pnk-hover-bg); color: var(--pnk-text); }
+.app-jumpbar__btn.is-active {
+  background: var(--pnk-accent-warm);
+  border-color: var(--pnk-accent-warm);
+  color: #fff;
+}
+
 .app-track-list {
   display: flex;
   flex-direction: column;

@@ -22,7 +22,7 @@ final class PlaylistRepository
     public function all(): array
     {
         $sql = 'SELECT p.*, t.title, t.artist, t.album, t.duration_seconds, t.codec,
-                       r.guest_name
+                       r.guest_name, r.guest_token
                 FROM playlist p
                 JOIN tracks t ON t.id = p.track_id
                 LEFT JOIN requests r ON r.id = p.request_id
@@ -62,10 +62,15 @@ final class PlaylistRepository
 
     /**
      * Fuegt einen Track in die Playlist ein - steht er schon drin, wird nicht
-     * doppelt eingereiht. Gastwuensche (SOURCE_GUEST) haben Vorrang vor dem
-     * Auto-DJ: sie werden vor dem ersten Auto-DJ-Eintrag einsortiert statt
-     * ans Ende angehaengt, damit sie vor automatisch gewaehlten Songs dran
-     * sind. Manuelle/Auto-DJ-Eintraege werden weiterhin ans Ende angehaengt.
+     * doppelt eingereiht. Feste Prioritaetsreihenfolge (vom Admin so
+     * gewuenscht): manuell hinzugefuegte Tracks zuerst, danach Gastwuensche,
+     * danach der Auto-DJ. Manuelle Tracks und Gastwuensche werden dafuer
+     * jeweils VOR dem naechsten "niedriger priorisierten" Bereich einsortiert
+     * statt ans Ende angehaengt; nur Auto-DJ-Tracks landen weiterhin ganz
+     * hinten. Innerhalb der Gastwuensche werden mehrere aufeinanderfolgende
+     * Wuensche desselben Gasts mit denen anderer Gaeste fair gemischt (Round-
+     * Robin, siehe priorityInsertIndex()) statt sich zu einem Block
+     * anzustauen.
      */
     public function add(int $trackId, string $source = self::SOURCE_MANUAL, ?int $requestId = null): int
     {
@@ -77,8 +82,14 @@ final class PlaylistRepository
             return (int) $existing['id'];
         }
 
-        if ($source === self::SOURCE_GUEST) {
-            return $this->insertAtIndex($trackId, $source, $requestId, $this->priorityInsertIndex());
+        if ($source === self::SOURCE_MANUAL || $source === self::SOURCE_GUEST) {
+            $guestToken = null;
+            if ($source === self::SOURCE_GUEST && $requestId !== null) {
+                $rstmt = $pdo->prepare('SELECT guest_token FROM requests WHERE id = ?');
+                $rstmt->execute([$requestId]);
+                $guestToken = $rstmt->fetch()['guest_token'] ?? null;
+            }
+            return $this->insertAtIndex($trackId, $source, $requestId, $this->priorityInsertIndex($source, $guestToken));
         }
 
         $nextPos = (int) $pdo->query('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM playlist')->fetch()['p'];
@@ -90,24 +101,81 @@ final class PlaylistRepository
     }
 
     /**
-     * Index (in der aktuellen Abspielreihenfolge), an dem ein Gastwunsch
-     * einsortiert werden soll: hinter Index 0 (dem gerade laufenden bzw. als
-     * naechstes anstehenden Track - der bleibt unangetastet vorn) und hinter
-     * bereits wartenden Gast-/manuellen Eintraegen, aber VOR dem ersten
-     * Auto-DJ-Eintrag. Kein Auto-DJ-Eintrag vorhanden -> ans Ende.
+     * Index (in der aktuellen Abspielreihenfolge), an dem ein neuer manueller
+     * oder Gast-Eintrag einsortiert werden soll - Index 0 (der gerade
+     * laufende bzw. als naechstes anstehende Track) bleibt dabei immer
+     * unangetastet vorn:
+     *
+     * - SOURCE_MANUAL: hinter alle bereits wartenden manuellen Eintraege,
+     *   aber vor den ersten Gast-/Auto-DJ-Eintrag (manuell hat immer Vorrang).
+     * - SOURCE_GUEST: hinter die manuellen Eintraege, dann fair per
+     *   Round-Robin unter den Gaesten einsortiert (siehe unten), spaetestens
+     *   aber vor dem ersten Auto-DJ-Eintrag.
      */
-    private function priorityInsertIndex(): int
+    private function priorityInsertIndex(string $source, ?string $guestToken): int
     {
         $items = $this->all();
-        foreach ($items as $i => $item) {
-            if ($i === 0) {
-                continue;
-            }
-            if ($item['source'] === self::SOURCE_AUTO) {
+        $n = count($items);
+
+        $manualEnd = 1;
+        while ($manualEnd < $n && $items[$manualEnd]['source'] === self::SOURCE_MANUAL) {
+            $manualEnd++;
+        }
+        if ($source === self::SOURCE_MANUAL) {
+            return $manualEnd;
+        }
+
+        $guestEnd = $manualEnd;
+        while ($guestEnd < $n && $items[$guestEnd]['source'] !== self::SOURCE_AUTO) {
+            $guestEnd++;
+        }
+
+        // Faire Einreihung: "Runde" = der wievielte Wunsch dieses Gasts es in
+        // der aktuellen Warteschlange waere (1., 2., 3. ...). Der neue Wunsch
+        // wird vor dem ersten bestehenden Eintrag mit einer HOEHEREN Runde
+        // einsortiert - ergibt automatisch 1.-von-A, 1.-von-B, 2.-von-A, ...
+        // statt A,A,A,B. Gaeste ohne bekannten Token (z.B. sehr alte Daten
+        // ohne guest_token) werden ueber einen gemeinsamen Platzhalter-
+        // Schluessel wie ein einzelner "Gast" behandelt.
+        $counts = [];
+        $roundOf = [];
+        for ($i = $manualEnd; $i < $guestEnd; $i++) {
+            $tok = $items[$i]['guest_token'] ?? '';
+            $counts[$tok] = ($counts[$tok] ?? 0) + 1;
+            $roundOf[$i] = $counts[$tok];
+        }
+        $newRound = ($counts[$guestToken ?? ''] ?? 0) + 1;
+        for ($i = $manualEnd; $i < $guestEnd; $i++) {
+            if ($roundOf[$i] > $newRound) {
                 return $i;
             }
         }
-        return count($items);
+        return $guestEnd;
+    }
+
+    /**
+     * Stellt einen Track wieder ganz vorn in der Playlist ein (Player-
+     * "Zurueck"-Button): der Track wurde beim Vorwaertsspielen per
+     * markPlayed() aus der Playlist entfernt, soll beim Zurueckspringen
+     * aber wieder sichtbar sein - an derselben Stelle (Position 0), an der
+     * der aktuell spielende Track ueblicherweise steht. Steht er (Edgecase)
+     * doch noch in der Playlist, wird er stattdessen nur nach vorn verschoben
+     * statt doppelt eingefuegt.
+     */
+    public function restoreAtFront(int $trackId, string $source = self::SOURCE_MANUAL, ?int $requestId = null): int
+    {
+        $pdo = Database::get();
+        $stmt = $pdo->prepare('SELECT id FROM playlist WHERE track_id = ? LIMIT 1');
+        $stmt->execute([$trackId]);
+        $existing = $stmt->fetch();
+        if ($existing) {
+            $ids = array_column($this->all(), 'id');
+            $ids = array_values(array_diff($ids, [(int) $existing['id']]));
+            array_unshift($ids, (int) $existing['id']);
+            $this->reorder($ids);
+            return (int) $existing['id'];
+        }
+        return $this->insertAtIndex($trackId, $source, $requestId, 0);
     }
 
     /** Fuegt einen neuen Track an einem bestimmten Index der Reihenfolge ein und nummeriert die Positionen neu durch. */
@@ -171,13 +239,21 @@ final class PlaylistRepository
     }
 
     /**
-     * Fuellt die Playlist auf, falls sie unter $minCount Eintraege hat: fuegt
-     * noch nicht (oder am laengsten nicht mehr) gespielte Tracks aus der
-     * Bibliothek hinzu, bis $targetCount erreicht ist. Vermeidet dabei nach
+     * Fuellt die Playlist auf, sofern sie unter der in den Einstellungen
+     * festgelegten Zielanzahl (Setting auto_dj_target_count, 0-15, Standard 3)
+     * liegt: fuegt noch nicht (oder am laengsten nicht mehr) gespielte Tracks
+     * aus der Bibliothek hinzu, bis das Ziel erreicht ist. Anders als eine
+     * getrennte "Mindest-/Zielspanne" wird hier IMMER exakt auf die eine
+     * konfigurierte Zahl aufgefuellt - sobald ein Track abgespielt wird und
+     * die Playlist dadurch unter das Ziel faellt, ergaenzt der naechste
+     * topUp()-Aufruf (SSE-Tick, Trackwechsel, neuer Gastwunsch) sofort wieder
+     * genau einen Track, statt erst bei einer tieferen Schwelle in groesserem
+     * Sprung nachzufuellen. 0 = Auto-DJ ergaenzt gar nichts (nur echte
+     * Gastwuensche werden noch automatisch angenommen). Vermeidet dabei nach
      * Moeglichkeit, denselben Kuenstler direkt zu wiederholen (weiche
      * Praeferenz - siehe pickCandidate()).
      *
-     * Garantiert das Auffuellen bis $targetCount, sofern die Bibliothek
+     * Garantiert das Auffuellen bis zum Ziel, sofern die Bibliothek
      * ueberhaupt genug Tracks enthaelt, die nicht schon in der Playlist
      * stehen: reicht die Sperrfrist-taugliche Auswahl nicht aus (z.B. weil
      * eine kleine Bibliothek durchgespielt wurde), wird als letzter Ausweg
@@ -187,10 +263,11 @@ final class PlaylistRepository
      *
      * @return int Anzahl tatsaechlich hinzugefuegter Tracks
      */
-    public function topUp(int $minCount = 3, int $targetCount = 5): int
+    public function topUp(): int
     {
+        $targetCount = max(0, min(15, (int) (new SettingRepository())->get('auto_dj_target_count', '3')));
         $current = $this->count();
-        if ($current >= $minCount) {
+        if ($current >= $targetCount) {
             return 0;
         }
         $addCount = $targetCount - $current;

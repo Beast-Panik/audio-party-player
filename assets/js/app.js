@@ -88,6 +88,18 @@
   var audioB = document.getElementById('audio-el-b');
 
   if (npBar && audioA && audioB) {
+    // Master/Slave (siehe PlayerSession.php): eine Slave-Session spielt nie
+    // lokal Audio ab (sonst liefen zwei Quellen parallel) - sie zeigt "jetzt
+    // laeuft" nur rein informativ per Server-Status an und schickt Vor/
+    // Zurueck als Fernsteuerungs-Befehl an die Master-Session (siehe
+    // sendRemoteCommand()/sonst goToPrevious()/doNext() weiter unten sowie
+    // der SSE-Handler, der bei der Master-Session eingehende Befehle
+    // ausfuehrt). data-slave wird serverseitig in admin_header.php gesetzt.
+    var isSlave = npBar.getAttribute('data-slave') === '1';
+    // null = "noch keine Basislinie" - verhindert, dass beim Laden der Seite
+    // ein evtl. schon aelterer, laengst erledigter Fernsteuerungsbefehl
+    // erneut ausgefuehrt wird.
+    var lastHandledRemoteSeq = null;
     var activeAudio = audioA;
     var standbyAudio = audioB;
     var currentTrackId = null;
@@ -293,8 +305,29 @@
     /** Merkt sich den bisherigen aktuellen Track im Verlauf, bevor er ueberschrieben wird. */
     function pushHistory() {
       if (currentTrackId === null) return;
-      playHistory.push({ track_id: currentTrackId, title: titleEl.textContent, artist: artistEl.textContent });
+      var source = 'manual', requestId = null;
+      for (var i = 0; i < playlistItems.length; i++) {
+        if (playlistItems[i].track_id === currentTrackId) {
+          source = playlistItems[i].source || 'manual';
+          requestId = playlistItems[i].request_id || null;
+          break;
+        }
+      }
+      playHistory.push({ track_id: currentTrackId, title: titleEl.textContent, artist: artistEl.textContent, source: source, request_id: requestId });
       if (playHistory.length > 10) playHistory.shift();
+    }
+
+    /** Traegt einen per "Zurueck" wieder angespielten Track erneut in die
+     * Server-Playlist ein, damit er dort (wie vor dem Vorwaertsspielen) an
+     * erster Stelle erscheint - siehe restoreAtFront() in PlaylistRepository. */
+    function restorePreviousOnServer(prev) {
+      postJson(api('api/playlist.php'), {
+        action: 'restore_previous',
+        track_id: prev.track_id,
+        source: prev.source || 'manual',
+        request_id: prev.request_id,
+        csrf_token: CSRF,
+      }).then(function () { refreshPlaylist(); });
     }
 
     /** Meldet den aktuellen Track dem Server, damit der Ticker auf der Gaeste-Seite ihn anzeigen kann. */
@@ -430,6 +463,7 @@
     function goToPrevious() {
       if (crossfading || !playHistory.length) return;
       var prev = playHistory.pop();
+      restorePreviousOnServer(prev);
       beginCrossfade(prev, true);
     }
 
@@ -454,14 +488,28 @@
         }
       });
     }
-    if (prevBtn) prevBtn.addEventListener('click', goToPrevious);
+    /** Ein Klick auf Vor/Zurueck: wie beim natuerlichen Trackende nie hart
+     * schneiden, sondern immer per Crossfade uebergehen. */
+    function doNext() {
+      if (crossfading) return;
+      var next = nextItemAfterCurrent(playlistItems);
+      if (next) beginCrossfade(next); else advanceToNext();
+    }
+
+    /** Slave-Fernsteuerung: Befehl nur hinterlegen, die Master-Session fuehrt
+     * ihn beim naechsten SSE-Tick tatsaechlich aus (siehe oben). */
+    function sendRemoteCommand(command) {
+      postJson(api('api/playlist.php'), { action: 'remote_command', command: command, csrf_token: CSRF });
+    }
+
+    if (prevBtn) {
+      prevBtn.addEventListener('click', function () {
+        if (isSlave) sendRemoteCommand('prev'); else goToPrevious();
+      });
+    }
     if (nextBtn) {
       nextBtn.addEventListener('click', function () {
-        if (crossfading) return;
-        // Skip soll wie beim natuerlichen Trackende nie hart schneiden,
-        // sondern immer per Crossfade uebergehen (siehe Nutzeranforderung).
-        var next = nextItemAfterCurrent(playlistItems);
-        if (next) beginCrossfade(next); else advanceToNext();
+        if (isSlave) sendRemoteCommand('next'); else doNext();
       });
     }
 
@@ -710,6 +758,27 @@
         applyPlaylistJson(j);
         renderQueue(j.requests || []);
         applyReactionJson(j.now_playing, j.reaction_count);
+
+        if (isSlave) {
+          // Reine Anzeige aus dem Server-Status - diese Session spielt selbst
+          // nichts ab (siehe Kommentar oben bei isSlave).
+          var np = j.now_playing || {};
+          currentTrackId = np.track_id || null;
+          if (titleEl) titleEl.textContent = np.title || '-';
+          if (artistEl) artistEl.textContent = np.artist || '-';
+          npBar.hidden = !np.track_id;
+          highlightPlayingRow(np.track_id);
+        } else if (j.remote_cmd_seq !== undefined) {
+          // Fernsteuerungs-Befehl einer Slave-Session abholen und auf der
+          // eigenen (tatsaechlich spielenden) Audioquelle ausfuehren.
+          if (lastHandledRemoteSeq === null) {
+            lastHandledRemoteSeq = j.remote_cmd_seq;
+          } else if (j.remote_cmd_seq > lastHandledRemoteSeq) {
+            lastHandledRemoteSeq = j.remote_cmd_seq;
+            if (j.remote_cmd === 'prev') goToPrevious();
+            else if (j.remote_cmd === 'next') doNext();
+          }
+        }
       };
     }
 
@@ -751,8 +820,11 @@
 
     /* -- Wiedergabe-Zustand nach einem echten Seitenneuaufbau (harter Reload/
      * erster Aufruf) fortsetzen. Bei einer Soft-Navigation (siehe ganz unten)
-     * ist das nie noetig, da die <audio>-Elemente dort gar nicht neu entstehen. -- */
-    (function restoreNowPlaying() {
+     * ist das nie noetig, da die <audio>-Elemente dort gar nicht neu entstehen.
+     * Fuer eine Slave-Session nie: die spielt grundsaetzlich kein lokales
+     * Audio (siehe isSlave oben) - auch nicht aus einem alten localStorage-
+     * Stand von einer Zeit, als dasselbe Geraet vielleicht Master war. -- */
+    if (!isSlave) (function restoreNowPlaying() {
       var raw;
       try { raw = localStorage.getItem(STORAGE_KEY); } catch (e) { return; }
       if (!raw) return;
@@ -799,6 +871,7 @@
     if (!trackList) return;
     var searchInput = document.getElementById('search-input');
     var trackCountEl = document.getElementById('track-count');
+    var jumpBar = document.getElementById('jump-bar');
     var searchTimer = null;
 
     function renderTracks(tracks, total) {
@@ -842,17 +915,55 @@
       }
     }
 
-    function loadTracks(q) {
-      fetch(api('api/tracks.php?limit=150&q=' + encodeURIComponent(q || '')))
+    function loadTracks(q, startsWith) {
+      var url = api('api/tracks.php?limit=150&q=' + encodeURIComponent(q || ''));
+      if (startsWith) url += '&starts_with=' + encodeURIComponent(startsWith);
+      fetch(url)
         .then(function (r) { return r.json(); })
         .then(function (j) { renderTracks(j.tracks || [], j.count); });
     }
 
     searchInput.addEventListener('input', function () {
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(function () { loadTracks(searchInput.value); }, 120);
+      searchTimer = setTimeout(function () {
+        if (jumpBar) jumpBar.querySelectorAll('.app-jumpbar__btn').forEach(function (b) { b.classList.remove('is-active'); });
+        loadTracks(searchInput.value);
+      }, 120);
+    });
+    initJumpBar(jumpBar, function (ch) {
+      searchInput.value = '';
+      loadTracks('', ch);
     });
     loadTracks('');
+  }
+
+  /* ================================================================== *
+   * A-Z/0-9-Sprungleiste unter der Suche (Bibliothek player.php UND
+   * Gaeste-Suche request.js) - springt per starts_with-Parameter (siehe
+   * api/tracks.php) direkt zu Titeln, die mit dem gewaehlten Buchstaben/der
+   * Zahl beginnen. Erneuter Klick auf den aktiven Buchstaben hebt den
+   * Filter wieder auf (Callback wird dann mit null aufgerufen).
+   * ================================================================== */
+  var JUMP_BAR_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
+  function initJumpBar(container, onPick) {
+    if (!container) return;
+    var html = '';
+    JUMP_BAR_CHARS.forEach(function (ch) {
+      html += '<button type="button" class="app-jumpbar__btn" data-ch="' + ch + '">' + ch + '</button>';
+    });
+    container.innerHTML = html;
+    container.querySelectorAll('.app-jumpbar__btn').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var wasActive = btn.classList.contains('is-active');
+        container.querySelectorAll('.app-jumpbar__btn').forEach(function (b) { b.classList.remove('is-active'); });
+        if (wasActive) {
+          onPick(null);
+        } else {
+          btn.classList.add('is-active');
+          onPick(btn.getAttribute('data-ch'));
+        }
+      });
+    });
   }
 
   /* ================================================================== *
@@ -1016,7 +1127,9 @@
               fill.style.width = pct + '%';
               label.textContent = processed + ' / ' + tot + ' Dateien verarbeitet…';
               if (res.body.done) {
-                label.textContent = 'Fertig: ' + tot + ' Dateien verarbeitet.';
+                var dupCount = res.body.duplicates || 0;
+                label.textContent = 'Fertig: ' + tot + ' Dateien verarbeitet.' +
+                  (dupCount ? ' ' + dupCount + ' Dublette' + (dupCount === 1 ? '' : 'n') + ' (gleicher Titel+Interpret) uebersprungen.' : '');
                 btn.disabled = false;
                 if (window.APP_SOFT_RELOAD) window.APP_SOFT_RELOAD();
               } else {
@@ -1042,6 +1155,7 @@
     var sizeSlider = document.getElementById('qr-logo-size-slider');
     var borderSlider = document.getElementById('qr-logo-border-slider');
     var fileInput = document.getElementById('qr-logo-file');
+    var allowUnsafeCheckbox = document.getElementById('qr-logo-allow-unsafe');
     if (!canvas || !sizeSlider || !borderSlider) return;
 
     var sizeValue = document.getElementById('qr-logo-size-value');
@@ -1211,8 +1325,9 @@
       var logoSize = Math.round(dim * (parseInt(sizeSlider.value, 10) / 100));
       var borderPx = parseInt(borderSlider.value, 10);
       var boxSize = logoSize + borderPx * 2;
+      var allowUnsafe = allowUnsafeCheckbox && allowUnsafeCheckbox.checked;
       var safeMax = Math.floor(dim * SAFE_MAX_BOX_PERCENT);
-      if (boxSize > safeMax && boxSize > 0) {
+      if (!allowUnsafe && boxSize > safeMax && boxSize > 0) {
         var ratio = safeMax / boxSize;
         logoSize = Math.floor(logoSize * ratio);
         borderPx = Math.floor(borderPx * ratio);
@@ -1263,6 +1378,16 @@
       draw();
     });
     if (fileInput) fileInput.addEventListener('change', reloadLogo);
+    if (allowUnsafeCheckbox) {
+      allowUnsafeCheckbox.addEventListener('change', function () {
+        sizeSlider.max = allowUnsafeCheckbox.checked ? 90 : 40;
+        if (!allowUnsafeCheckbox.checked && parseInt(sizeSlider.value, 10) > 40) {
+          sizeSlider.value = 40;
+          if (sizeValue) sizeValue.textContent = sizeSlider.value;
+        }
+        draw();
+      });
+    }
   }
 
   /* ================================================================== *
@@ -1559,9 +1684,13 @@
               return '<li>' + escapeHtml(s.name) + (s.license ? ' – ' + escapeHtml(s.license) : '') + '</li>';
             }).join('') + '</ul>'
           : '<p class="pnk-text-muted" style="margin:8px 0 0; font-size:13px;">' + escapeHtml(j.sources_note || '') + '</p>';
+        var websiteHtml = j.website
+          ? '<p style="margin:0 0 16px;"><a href="' + escapeHtml(j.website) + '" target="_blank" rel="noopener">' + escapeHtml(j.website) + '</a></p>'
+          : '';
         aboutBody.innerHTML =
-          '<p style="margin:0 0 4px; font-weight:600;">' + escapeHtml(j.app_name) + '</p>' +
-          '<p class="pnk-text-muted" style="margin:0 0 16px; font-size:12px;">Version ' + escapeHtml(j.version) + '</p>' +
+          '<p style="margin:0 0 4px; font-weight:600; text-align:center;">' + escapeHtml(j.app_name) + '</p>' +
+          '<p class="pnk-text-muted" style="margin:0 0 8px; font-size:12px; text-align:center;">Version ' + escapeHtml(j.version) + '</p>' +
+          '<div style="text-align:center;">' + websiteHtml + '</div>' +
           '<p style="margin:0; font-size:13px; font-weight:600;">Quellen &amp; Lizenzen</p>' +
           sourcesHtml;
       }).catch(function () {
@@ -1572,6 +1701,90 @@
     aboutBtn.addEventListener('click', openAbout);
     aboutCloseBtns.forEach(function (btn) { if (btn) btn.addEventListener('click', closeAbout); });
     aboutBackdrop.addEventListener('click', function (e) { if (e.target === aboutBackdrop) closeAbout(); });
+  }
+
+  /* ================================================================== *
+   * Konto-Modal: Klick auf den eigenen Benutzernamen oben rechts oeffnet
+   * ein Modal zum Aendern von Benutzername/Passwort (siehe api/account.php,
+   * verlangt dort jeweils das aktuelle Passwort zur Bestaetigung). Lebt im
+   * Kopfbereich und wird von der Soft-Navigation nie angefasst.
+   * ================================================================== */
+  var accountBtn = document.getElementById('btn-account');
+  var accountBackdrop = document.getElementById('account-modal-backdrop');
+  if (accountBtn && accountBackdrop) {
+    var accountFeedback = document.getElementById('account-modal-feedback');
+    var accountUsernameInput = document.getElementById('account-username');
+    var accountUsernameCurrentPw = document.getElementById('account-username-current-password');
+    var accountUsernameSaveBtn = document.getElementById('account-username-save');
+    var accountPasswordNew = document.getElementById('account-password-new');
+    var accountPasswordConfirm = document.getElementById('account-password-confirm');
+    var accountPasswordCurrentPw = document.getElementById('account-password-current-password');
+    var accountPasswordSaveBtn = document.getElementById('account-password-save');
+    var accountCloseBtns = [document.getElementById('account-modal-close'), document.getElementById('account-modal-close-2')];
+
+    function accountShowFeedback(type, message) {
+      accountFeedback.innerHTML = '<div class="pnk-alert pnk-alert--' + type + '" style="margin-bottom:16px;">' + escapeHtml(message) + '</div>';
+    }
+    function accountClearFeedback() { accountFeedback.innerHTML = ''; }
+
+    function openAccount() {
+      accountClearFeedback();
+      accountUsernameInput.value = accountBtn.textContent.trim();
+      accountUsernameCurrentPw.value = '';
+      accountPasswordNew.value = '';
+      accountPasswordConfirm.value = '';
+      accountPasswordCurrentPw.value = '';
+      accountBackdrop.hidden = false;
+    }
+    function closeAccount() { accountBackdrop.hidden = true; }
+
+    accountBtn.addEventListener('click', openAccount);
+    accountCloseBtns.forEach(function (btn) { if (btn) btn.addEventListener('click', closeAccount); });
+    accountBackdrop.addEventListener('click', function (e) { if (e.target === accountBackdrop) closeAccount(); });
+
+    accountUsernameSaveBtn.addEventListener('click', function () {
+      var username = accountUsernameInput.value.trim();
+      if (!username) { accountShowFeedback('danger', 'Benutzername darf nicht leer sein.'); return; }
+      accountUsernameSaveBtn.disabled = true;
+      postJson(api('api/account.php'), {
+        action: 'update_username',
+        username: username,
+        current_password: accountUsernameCurrentPw.value,
+        csrf_token: CSRF,
+      }).then(function (res) {
+        accountUsernameSaveBtn.disabled = false;
+        if (res.ok && res.body && res.body.ok) {
+          accountBtn.textContent = res.body.username;
+          accountUsernameCurrentPw.value = '';
+          accountShowFeedback('success', 'Benutzername geändert.');
+        } else {
+          accountShowFeedback('danger', (res.body && res.body.error) || 'Fehler beim Speichern.');
+        }
+      });
+    });
+
+    accountPasswordSaveBtn.addEventListener('click', function () {
+      if (accountPasswordNew.value.length < 8) { accountShowFeedback('danger', 'Neues Passwort muss mindestens 8 Zeichen haben.'); return; }
+      if (accountPasswordNew.value !== accountPasswordConfirm.value) { accountShowFeedback('danger', 'Die neuen Passwörter stimmen nicht überein.'); return; }
+      accountPasswordSaveBtn.disabled = true;
+      postJson(api('api/account.php'), {
+        action: 'update_password',
+        password: accountPasswordNew.value,
+        password2: accountPasswordConfirm.value,
+        current_password: accountPasswordCurrentPw.value,
+        csrf_token: CSRF,
+      }).then(function (res) {
+        accountPasswordSaveBtn.disabled = false;
+        if (res.ok && res.body && res.body.ok) {
+          accountPasswordNew.value = '';
+          accountPasswordConfirm.value = '';
+          accountPasswordCurrentPw.value = '';
+          accountShowFeedback('success', 'Passwort geändert.');
+        } else {
+          accountShowFeedback('danger', (res.body && res.body.error) || 'Fehler beim Speichern.');
+        }
+      });
+    });
   }
 
   /* ================================================================== *

@@ -83,6 +83,33 @@ final class TrackRepository
         return (int) $stmt->fetch()['c'];
     }
 
+    /**
+     * Sucht einen bereits vorhandenen Track mit identischen Tags (Titel +
+     * Interpret, normalisiert per trim/Kleinschreibung) - fuer die
+     * Duplikat-Erkennung beim Scannen (dieselbe Aufnahme liegt als andere
+     * Datei/in einer anderen Bibliothek nochmal vor). $excludeLibraryId/
+     * $excludeRelpath schliessen die gerade gescannte Datei selbst aus,
+     * damit ein erneuter Scan derselben Datei nicht sich selbst als
+     * Duplikat meldet. Ein leerer Titel wird nie als Duplikat gewertet
+     * (zu unspezifisch, traefe sonst auf beliebig viele "unbenannte" Tracks).
+     */
+    public function findDuplicateByTags(string $title, string $artist, int $excludeLibraryId, string $excludeRelpath): ?array
+    {
+        $title = trim($title);
+        if ($title === '') {
+            return null;
+        }
+        $stmt = Database::get()->prepare(
+            'SELECT * FROM tracks
+             WHERE LOWER(title) = LOWER(?) AND LOWER(COALESCE(artist, \'\')) = LOWER(?)
+               AND NOT (library_id = ? AND relpath = ?)
+             ORDER BY id ASC LIMIT 1'
+        );
+        $stmt->execute([$title, trim($artist), $excludeLibraryId, $excludeRelpath]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
     public function findByLibraryAndRelpath(int $libraryId, string $relpath): ?array
     {
         $stmt = Database::get()->prepare('SELECT * FROM tracks WHERE library_id = ? AND relpath = ?');
@@ -101,13 +128,39 @@ final class TrackRepository
 
     /**
      * Volltextsuche (einfach, per LIKE) ueber Titel/Interpret/Album.
+     *
+     * $startsWith: fuer die A-Z/0-9-Sprungleiste (Bibliothek/Gaeste-Suche) -
+     * liefert nur Titel, die mit diesem einzelnen Zeichen beginnen,
+     * alphabetisch sortiert; ignoriert $query dabei.
+     *
+     * Ohne Suchbegriff und ohne $startsWith (= die normale "Bibliothek
+     * durchstoebern"-Ansicht) wird bewusst in zufaelliger Reihenfolge
+     * sortiert statt immer alphabetisch - bei jedem Laden der Seite werden
+     * so andere Titel oben angezeigt, damit nicht immer dieselben (alphabet-
+     * isch fruehen) Tracks den sichtbaren Ausschnitt dominieren.
      */
-    public function search(string $query = '', int $limit = 100, int $offset = 0): array
+    public function search(string $query = '', int $limit = 100, int $offset = 0, ?string $startsWith = null): array
     {
         $pdo = Database::get();
         $query = trim($query);
+        $startsWith = $startsWith !== null ? trim($startsWith) : null;
+
+        if ($startsWith !== null && $startsWith !== '') {
+            $like = str_replace(['%', '_'], ['\%', '\_'], $startsWith) . '%';
+            $stmt = $pdo->prepare(
+                "SELECT * FROM tracks WHERE LOWER(title) LIKE LOWER(?) ESCAPE '\\'
+                 ORDER BY title, artist, album, track_no LIMIT ? OFFSET ?"
+            );
+            $stmt->bindValue(1, $like);
+            $stmt->bindValue(2, $limit, \PDO::PARAM_INT);
+            $stmt->bindValue(3, $offset, \PDO::PARAM_INT);
+            $stmt->execute();
+            return $stmt->fetchAll();
+        }
+
         if ($query === '') {
-            $stmt = $pdo->prepare('SELECT * FROM tracks ORDER BY artist, album, track_no, title LIMIT ? OFFSET ?');
+            $randomFn = Database::driver() === 'mysql' ? 'RAND()' : 'RANDOM()';
+            $stmt = $pdo->prepare("SELECT * FROM tracks ORDER BY {$randomFn} LIMIT ? OFFSET ?");
             $stmt->bindValue(1, $limit, \PDO::PARAM_INT);
             $stmt->bindValue(2, $offset, \PDO::PARAM_INT);
             $stmt->execute();
@@ -176,5 +229,24 @@ final class TrackRepository
     {
         $stmt = Database::get()->prepare('UPDATE tracks SET lock_released_at = ? WHERE id = ?');
         $stmt->execute([Util::now(), $trackId]);
+    }
+
+    /**
+     * Zaehlt die "Spielinstanz" eines Tracks hoch - aufgerufen bei jedem
+     * (Wieder-)Start seiner Wiedergabe (siehe api/playlist.php Action
+     * set_now_playing). Grundlage fuer TrackReactionRepository: eine
+     * Herz-Reaktion ist nur einmal pro Track UND Spielinstanz erlaubt.
+     */
+    public function bumpPlaySeq(int $trackId): void
+    {
+        Database::get()->prepare('UPDATE tracks SET play_seq = play_seq + 1 WHERE id = ?')->execute([$trackId]);
+    }
+
+    public function currentPlaySeq(int $trackId): int
+    {
+        $stmt = Database::get()->prepare('SELECT play_seq FROM tracks WHERE id = ?');
+        $stmt->execute([$trackId]);
+        $row = $stmt->fetch();
+        return $row ? (int) $row['play_seq'] : 0;
     }
 }

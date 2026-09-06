@@ -57,16 +57,20 @@ final class Scanner
         $trackRepo = new TrackRepository();
         $end = min($processed + $chunkSize, $total);
         $errors = [];
+        $duplicates = ($state['duplicates'] ?? 0);
         for ($i = $processed; $i < $end; $i++) {
             $relpath = $files[$i];
             try {
-                self::scanOneFile($libraryId, $root . '/' . $relpath, $relpath, $trackRepo);
+                if (self::scanOneFile($libraryId, $root . '/' . $relpath, $relpath, $trackRepo)) {
+                    $duplicates++;
+                }
             } catch (\Throwable $e) {
                 $errors[] = $relpath . ': ' . $e->getMessage();
             }
         }
 
         $state['processed'] = $end;
+        $state['duplicates'] = $duplicates;
         $done = $end >= $total;
 
         if ($done) {
@@ -79,7 +83,7 @@ final class Scanner
             file_put_contents($stateFile, json_encode($state));
         }
 
-        return ['done' => $done, 'processed' => $end, 'total' => $total, 'errors' => $errors];
+        return ['done' => $done, 'processed' => $end, 'total' => $total, 'errors' => $errors, 'duplicates' => $duplicates];
     }
 
     /** Bricht einen laufenden Scan ab (z.B. wenn der Admin ihn neu startet). */
@@ -121,10 +125,11 @@ final class Scanner
 
     private const COVER_MIME_EXT = ['image/jpeg' => 'jpg', 'image/jpg' => 'jpg', 'image/png' => 'png'];
 
-    private static function scanOneFile(int $libraryId, string $fullpath, string $relpath, TrackRepository $repo): void
+    /** @return bool true, wenn die Datei als Duplikat (identische Tags, andere Datei) uebersprungen wurde. */
+    private static function scanOneFile(int $libraryId, string $fullpath, string $relpath, TrackRepository $repo): bool
     {
         if (!is_file($fullpath)) {
-            return;
+            return false;
         }
         $ext = strtolower(pathinfo($fullpath, PATHINFO_EXTENSION));
         $meta = $ext === 'flac' ? (new FlacReader())->read($fullpath) : (new Id3Reader())->read($fullpath);
@@ -147,9 +152,18 @@ final class Scanner
         unset($meta['cover_mime'], $meta['cover_data']);
 
         $existing = $repo->findByLibraryAndRelpath($libraryId, $relpath);
+        if (!$existing && $repo->findDuplicateByTags((string) $meta['title'], (string) ($meta['artist'] ?? ''), $libraryId, $relpath)) {
+            // Neue Datei, aber Titel+Interpret stimmen mit einem bereits
+            // vorhandenen Track ueberein (z.B. dieselbe Aufnahme doppelt auf
+            // der Platte oder in zwei gescannten Ordnern) - nicht als
+            // zweiten Eintrag anlegen, damit die Bibliothek/Auto-DJ sie
+            // nicht als zwei verschiedene Songs behandelt.
+            return true;
+        }
         $trackId = $repo->upsert($libraryId, $relpath, $meta);
 
         self::syncCoverFile($trackId, $existing['cover_ext'] ?? null, $coverExt, $coverData);
+        return false;
     }
 
     /** Schreibt/loescht die Cover-Datei passend zum aktuellen Scan-Ergebnis. */

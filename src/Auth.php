@@ -33,6 +33,7 @@ final class Auth
 
     public static function logout(): void
     {
+        PlayerSession::releaseIfMaster();
         $_SESSION = [];
         if (ini_get('session.use_cookies')) {
             $params = session_get_cookie_params();

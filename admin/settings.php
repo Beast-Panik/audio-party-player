@@ -6,10 +6,12 @@ use App\Auth;
 use App\Config;
 use App\Csrf;
 use App\LogoProcessor;
+use App\PlayerSession;
 use App\Repositories\SettingRepository;
 use App\Util;
 
 Auth::requireLogin();
+PlayerSession::requireMasterOrRedirect();
 
 $settings = new SettingRepository();
 $error = null;
@@ -50,6 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $guestLimitMinutes = (int) ($_POST['guest_limit_minutes'] ?? 0);
         $lockHours = (int) ($_POST['recent_played_lock_hours'] ?? 0);
         $previewSeconds = (int) ($_POST['preview_seconds'] ?? 0);
+        $autoDjTargetCount = (int) ($_POST['auto_dj_target_count'] ?? 3);
 
         if ($guestLimitCount < 0 || $guestLimitMinutes < 0) {
             $error = 'Limit und Zeitraum duerfen nicht negativ sein.';
@@ -59,11 +62,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Die Sperrfrist darf nicht negativ sein.';
         } elseif ($previewSeconds < 5 || $previewSeconds > 60) {
             $error = 'Die Vorhoerdauer muss zwischen 5 und 60 Sekunden liegen.';
+        } elseif ($autoDjTargetCount < 0 || $autoDjTargetCount > 15) {
+            $error = 'Die Auto-DJ-Zielanzahl muss zwischen 0 und 15 liegen.';
         } else {
             $settings->set('guest_limit_count', (string) $guestLimitCount);
             $settings->set('guest_limit_minutes', (string) max(1, $guestLimitMinutes));
             $settings->set('recent_played_lock_hours', (string) $lockHours);
             $settings->set('preview_seconds', (string) $previewSeconds);
+            $settings->set('auto_dj_target_count', (string) $autoDjTargetCount);
             $success = 'Einstellungen gespeichert.';
         }
     }
@@ -138,8 +144,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } else {
             $logoSizePercent = (int) ($_POST['qr_logo_size_percent'] ?? 20);
             $logoBorderPx = (int) ($_POST['qr_logo_border_px'] ?? 6);
-            if ($logoSizePercent < 5 || $logoSizePercent > 40) {
-                $error = 'Logo-Groesse muss zwischen 5 und 40% liegen.';
+            $allowUnsafeSize = !empty($_POST['qr_logo_allow_unsafe_size']);
+            $maxSizePercent = $allowUnsafeSize ? 90 : 40;
+            if ($logoSizePercent < 5 || $logoSizePercent > $maxSizePercent) {
+                $error = "Logo-Groesse muss zwischen 5 und {$maxSizePercent}% liegen.";
             } elseif ($logoBorderPx < 0 || $logoBorderPx > 30) {
                 $error = 'Weisser Rand muss zwischen 0 und 30 Pixel liegen.';
             } elseif (!empty($_FILES['qr_logo']['tmp_name']) && is_uploaded_file($_FILES['qr_logo']['tmp_name'])) {
@@ -163,11 +171,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $settings->set('qr_logo_ext', $newExt);
                     $settings->set('qr_logo_size_percent', (string) $logoSizePercent);
                     $settings->set('qr_logo_border_px', (string) $logoBorderPx);
+                    $settings->set('qr_logo_allow_unsafe_size', $allowUnsafeSize ? '1' : '0');
                     $success = 'Einstellungen gespeichert.';
                 }
             } else {
                 $settings->set('qr_logo_size_percent', (string) $logoSizePercent);
                 $settings->set('qr_logo_border_px', (string) $logoBorderPx);
+                $settings->set('qr_logo_allow_unsafe_size', $allowUnsafeSize ? '1' : '0');
                 $success = 'Einstellungen gespeichert.';
             }
         }
@@ -188,10 +198,12 @@ $displayTheme = $settings->get('display_theme', 'dark');
 $qrLogoExt = $settings->get('qr_logo_ext', '');
 $qrLogoSizePercent = (int) $settings->get('qr_logo_size_percent', '20');
 $qrLogoBorderPx = (int) $settings->get('qr_logo_border_px', '6');
+$qrLogoAllowUnsafeSize = $settings->get('qr_logo_allow_unsafe_size', '0') === '1';
 $requestUrl = ($requestUrlOverride ?: rtrim(Config::get('app_url', ''), '/')) . app_url('request.php');
 $guestLimitCount = (int) $settings->get('guest_limit_count', '3');
 $guestLimitMinutes = (int) $settings->get('guest_limit_minutes', '60');
 $recentPlayedLockHours = (int) $settings->get('recent_played_lock_hours', '4');
+$autoDjTargetCount = (int) $settings->get('auto_dj_target_count', '3');
 $previewSeconds = (int) $settings->get('preview_seconds', '20');
 $tickerEnabled = $settings->get('ticker_enabled', '0') === '1';
 $countdownEnabled = $settings->get('countdown_enabled', '0') === '1';
@@ -303,6 +315,16 @@ require __DIR__ . '/../templates/admin_header.php';
             Ausschnitt aus der Mitte des Tracks, den Gäste vor dem Wünschen anhören können.
           </p>
         </div>
+      </div>
+      <div style="margin-top:16px;">
+        <label class="pnk-label">Auto-DJ: Ziel-Anzahl Tracks in der Playlist</label>
+        <input class="pnk-input" type="number" min="0" max="15" step="1" name="auto_dj_target_count" value="<?= (int) $autoDjTargetCount ?>" style="max-width:120px;">
+        <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0;">
+          Der Auto-DJ haelt die Playlist staendig auf dieser Anzahl (0-15): sobald sie
+          durch Abspielen darunter faellt, wird sofort automatisch der naechste Track
+          ergaenzt. 0 = Auto-DJ füllt nichts automatisch nach (Gastwünsche werden trotzdem
+          angenommen, wenn Auto-DJ aktiv ist).
+        </p>
       </div>
       <button class="pnk-btn pnk-btn--primary" type="submit" style="margin-top:16px;">Speichern</button>
     </form>
@@ -454,7 +476,7 @@ require __DIR__ . '/../templates/admin_header.php';
           <?php endif; ?>
 
           <label class="pnk-label" style="margin-top:16px;">Logo-Größe (<span id="qr-logo-size-value"><?= (int) $qrLogoSizePercent ?></span>%)</label>
-          <input type="range" id="qr-logo-size-slider" name="qr_logo_size_percent" min="5" max="40" step="1" value="<?= (int) $qrLogoSizePercent ?>" style="width:100%; max-width:320px; display:block;">
+          <input type="range" id="qr-logo-size-slider" name="qr_logo_size_percent" min="5" max="<?= $qrLogoAllowUnsafeSize ? 90 : 40 ?>" step="1" value="<?= (int) $qrLogoSizePercent ?>" style="width:100%; max-width:320px; display:block;">
 
           <label class="pnk-label" style="margin-top:16px;">Weißer Rand um Logo (<span id="qr-logo-border-value"><?= (int) $qrLogoBorderPx ?></span>px)</label>
           <input type="range" id="qr-logo-border-slider" name="qr_logo_border_px" min="0" max="30" step="1" value="<?= (int) $qrLogoBorderPx ?>" style="width:100%; max-width:320px; display:block;">
@@ -462,6 +484,17 @@ require __DIR__ . '/../templates/admin_header.php';
             Datei waehlen oder Schieberegler bewegen aktualisiert die Vorschau links sofort - erst
             "Speichern" uebernimmt die Aenderung dauerhaft (dabei werden transparente Raender
             serverseitig zugeschnitten, die Vorschau ist bis dahin eine Annaeherung).
+          </p>
+
+          <label class="pnk-field-row" style="cursor:pointer; margin-top:16px;">
+            <input class="pnk-checkbox" type="checkbox" id="qr-logo-allow-unsafe" name="qr_logo_allow_unsafe_size" value="1" <?= $qrLogoAllowUnsafeSize ? 'checked' : '' ?>>
+            <span>Sicherheitsgrenze überschreiten (auf eigenes Risiko)</span>
+          </label>
+          <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0;">
+            Größere Logos verdecken mehr vom QR-Code und können ihn schlechter scannbar
+            machen - diese Option hebt die getestete Sicherheitsgrenze (15% der Fläche)
+            auf Wunsch bis auf 90% an. Nach dem Aktivieren unbedingt selbst mit mehreren
+            Handys testen, ob der Code noch zuverlässig scannt.
           </p>
 
           <div style="display:flex; gap:10px; margin-top:16px;">

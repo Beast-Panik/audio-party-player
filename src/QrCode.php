@@ -78,7 +78,8 @@ final class QrCode
         ?string $logoPath = null,
         string $logoExt = '',
         int $logoSizePercent = 20,
-        int $logoBorderPx = 6
+        int $logoBorderPx = 6,
+        bool $allowUnsafeSize = false
     ): string {
         [$size, $modules] = self::encode($text, $preferredEcc);
         $dim = ($size + $border * 2) * $scale;
@@ -105,21 +106,23 @@ final class QrCode
         $svg .= '<g fill="' . htmlspecialchars($dark, ENT_QUOTES) . '">' . implode('', $rows) . '</g>';
 
         if ($logoPath !== null) {
-            $logoSizePercent = max(0, min(60, $logoSizePercent));
-            $logoBorderPx = max(0, min(60, $logoBorderPx));
+            // Absolute Obergrenze bleibt auch im "auf eigenes Risiko"-Modus
+            // bestehen (100% waere ein komplett zugedeckter QR-Code) - alles
+            // darueber ist offensichtlich sinnlos, kein sinnvoller Anwendungsfall.
+            $logoSizePercent = max(0, min(90, $logoSizePercent));
+            $logoBorderPx = max(0, min(90, $logoBorderPx));
             $logoSize = (int) round($dim * ($logoSizePercent / 100));
             $boxSize = $logoSize + $logoBorderPx * 2;
 
-            // Harte Sicherheitsgrenze (siehe MAX_LOGO_BOX_PERCENT): egal was
-            // angefragt wurde, Logo+Rand duerfen zusammen nie mehr als den
-            // sicheren Anteil der QR-Flaeche einnehmen - Logo und Rand werden
-            // dafuer im gleichen Verhaeltnis anteilig verkleinert. Das ist die
-            // eigentliche Umsetzung von "Logo immer an die Groesse des Platzes
-            // im QR-Code angepasst": kleinere QR-Codes (kurze URLs) vertragen
-            // in absoluten Pixeln weniger als grosse, der Rechenweg passt sich
-            // also automatisch an die tatsaechliche QR-Groesse an.
+            // Harte Sicherheitsgrenze (siehe MAX_LOGO_BOX_PERCENT): standardmaessig
+            // duerfen Logo+Rand zusammen nie mehr als den sicher scannbaren Anteil
+            // der QR-Flaeche einnehmen - Logo und Rand werden dafuer im gleichen
+            // Verhaeltnis anteilig verkleinert. Auf ausdruecklichen Wunsch
+            // ($allowUnsafeSize, per Einstellung "auf eigenes Risiko" aktivierbar)
+            // wird diese Grenze uebersprungen; die Scanbarkeit ist dann nicht mehr
+            // garantiert und liegt in der Verantwortung des Admins.
             $safeMax = (int) floor($dim * (self::MAX_LOGO_BOX_PERCENT / 100));
-            if ($boxSize > $safeMax && $boxSize > 0) {
+            if (!$allowUnsafeSize && $boxSize > $safeMax && $boxSize > 0) {
                 $ratio = $safeMax / $boxSize;
                 $logoSize = (int) floor($logoSize * $ratio);
                 $logoBorderPx = (int) floor($logoBorderPx * $ratio);

@@ -11,27 +11,26 @@ use App\Util;
  */
 final class TrackReactionRepository
 {
-    private const COOLDOWN_SECONDS = 3;
-
     // Grobe IP-Bremse als Backstop, falls jemand den Gast-Cookie zwischen
-    // Requests rotiert (siehe GuestIdentity) - ohne die waere der
-    // Guest-Token-Cooldown oben trivial per Skript umgehbar und
+    // Requests rotiert (siehe GuestIdentity) - ohne die waere die Sperre pro
+    // Track+Spielinstanz unten trivial per Skript umgehbar und
     // track_reactions liesse sich unbegrenzt volllaufen lassen.
     private const IP_LIMIT_COUNT = 30;
     private const IP_LIMIT_SECONDS = 60;
 
     /**
-     * Legt eine Reaktion an, sofern derselbe Gast fuer denselben Track nicht
-     * innerhalb der Cooldown-Zeit schon reagiert hat (Spam-Bremse gegen
-     * gedrueckt gehaltene/schnell wiederholt geklickte Buttons), und diese
-     * IP nicht bereits das grobe Gesamt-Limit erreicht hat.
+     * Legt eine Reaktion an, sofern derselbe Gast fuer diesen Track in der
+     * AKTUELLEN Spielinstanz (tracks.play_seq, hochgezaehlt bei jedem
+     * (Wieder-)Start ueber TrackRepository::bumpPlaySeq()) noch nicht
+     * reagiert hat - pro Track und Wiedergabe genau ein Herz je Gast, wird
+     * der Track spaeter erneut gespielt, darf wieder reagiert werden. Und
+     * sofern diese IP nicht bereits das grobe Gesamt-Limit erreicht hat.
      */
     public function add(int $trackId, string $guestToken): bool
     {
         $pdo = Database::get();
-        $now = time();
 
-        $ipCutoff = date('Y-m-d H:i:s', $now - self::IP_LIMIT_SECONDS);
+        $ipCutoff = date('Y-m-d H:i:s', time() - self::IP_LIMIT_SECONDS);
         $ipHash = Util::clientIpHash();
         $stmt = $pdo->prepare('SELECT COUNT(*) AS c FROM track_reactions WHERE ip_hash = ? AND created_at >= ?');
         $stmt->execute([$ipHash, $ipCutoff]);
@@ -39,28 +38,39 @@ final class TrackReactionRepository
             return false;
         }
 
-        $cutoff = date('Y-m-d H:i:s', $now - self::COOLDOWN_SECONDS);
+        $stmt = $pdo->prepare('SELECT play_seq FROM tracks WHERE id = ?');
+        $stmt->execute([$trackId]);
+        $track = $stmt->fetch();
+        if (!$track) {
+            return false;
+        }
+        $playSeq = (int) $track['play_seq'];
+
         $stmt = $pdo->prepare(
-            'SELECT 1 FROM track_reactions WHERE track_id = ? AND guest_token = ? AND created_at >= ? LIMIT 1'
+            'SELECT 1 FROM track_reactions WHERE track_id = ? AND guest_token = ? AND play_seq = ? LIMIT 1'
         );
-        $stmt->execute([$trackId, $guestToken, $cutoff]);
+        $stmt->execute([$trackId, $guestToken, $playSeq]);
         if ($stmt->fetch()) {
             return false;
         }
 
-        $pdo->prepare('INSERT INTO track_reactions (track_id, guest_token, ip_hash, created_at) VALUES (?, ?, ?, ?)')
-            ->execute([$trackId, $guestToken, $ipHash, Util::now()]);
+        $pdo->prepare('INSERT INTO track_reactions (track_id, guest_token, ip_hash, play_seq, created_at) VALUES (?, ?, ?, ?, ?)')
+            ->execute([$trackId, $guestToken, $ipHash, $playSeq, Util::now()]);
         return true;
     }
 
-    /** Anzahl Reaktionen fuer die "laeuft gerade"-Anzeige (nur die letzten $sinceMinutes Minuten). */
-    public function countForTrack(int $trackId, int $sinceMinutes = 30): int
+    /** Anzahl Reaktionen der aktuellen Spielinstanz fuer die "laeuft gerade"-Anzeige. */
+    public function countForTrack(int $trackId): int
     {
-        $since = date('Y-m-d H:i:s', time() - $sinceMinutes * 60);
-        $stmt = Database::get()->prepare(
-            'SELECT COUNT(*) AS c FROM track_reactions WHERE track_id = ? AND created_at >= ?'
-        );
-        $stmt->execute([$trackId, $since]);
+        $pdo = Database::get();
+        $stmt = $pdo->prepare('SELECT play_seq FROM tracks WHERE id = ?');
+        $stmt->execute([$trackId]);
+        $track = $stmt->fetch();
+        if (!$track) {
+            return 0;
+        }
+        $stmt = $pdo->prepare('SELECT COUNT(*) AS c FROM track_reactions WHERE track_id = ? AND play_seq = ?');
+        $stmt->execute([$trackId, (int) $track['play_seq']]);
         return (int) $stmt->fetch()['c'];
     }
 }

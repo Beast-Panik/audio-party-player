@@ -47,6 +47,7 @@ if ($method === 'GET') {
                 'duration_seconds' => $r['duration_seconds'] !== null ? (int) $r['duration_seconds'] : null,
                 'source' => $r['source'],
                 'guest_name' => $r['guest_name'],
+                'request_id' => $r['request_id'] !== null ? (int) $r['request_id'] : null,
             ];
         }, $rows),
     ]);
@@ -100,13 +101,39 @@ if ($method === 'POST') {
         exit;
     }
 
+    if ($action === 'restore_previous') {
+        // Der Player-"Zurueck"-Button springt zu einem bereits durchgespielten
+        // Track zurueck (beginCrossfade(prev, true) in app.js) - der wurde
+        // beim Vorwaertsspielen per markPlayed() aus der Playlist entfernt und
+        // muss jetzt wieder vorn erscheinen, siehe restoreAtFront().
+        $trackId = (int) ($input['track_id'] ?? 0);
+        if (!(new TrackRepository())->findById($trackId)) {
+            json_fail(404, 'Song nicht gefunden.');
+        }
+        $source = (string) ($input['source'] ?? PlaylistRepository::SOURCE_MANUAL);
+        $validSources = [PlaylistRepository::SOURCE_MANUAL, PlaylistRepository::SOURCE_GUEST, PlaylistRepository::SOURCE_AUTO];
+        if (!in_array($source, $validSources, true)) {
+            $source = PlaylistRepository::SOURCE_MANUAL;
+        }
+        $requestId = isset($input['request_id']) && $input['request_id'] !== null ? (int) $input['request_id'] : null;
+        $id = $playlist->restoreAtFront($trackId, $source, $requestId);
+        echo json_encode(['ok' => true, 'id' => $id]);
+        exit;
+    }
+
     if ($action === 'set_now_playing') {
         // Wird vom Player bei jedem Trackwechsel gemeldet, damit die
         // Gaeste-Wunschseite den aktuell laufenden Track im Ticker anzeigen
         // kann (siehe api/now_playing.php).
+        $npTrackId = (int) ($input['track_id'] ?? 0);
         $settings->set('now_playing_title', (string) ($input['title'] ?? ''));
         $settings->set('now_playing_artist', (string) ($input['artist'] ?? ''));
-        $settings->set('now_playing_track_id', (string) ((int) ($input['track_id'] ?? 0)));
+        $settings->set('now_playing_track_id', (string) $npTrackId);
+        if ($npTrackId > 0) {
+            // Neue Spielinstanz - Herz-Reaktionen (siehe TrackReactionRepository)
+            // duerfen fuer diesen Track wieder abgegeben werden.
+            (new TrackRepository())->bumpPlaySeq($npTrackId);
+        }
         echo json_encode(['ok' => true]);
         exit;
     }
@@ -120,6 +147,23 @@ if ($method === 'POST') {
         }
         (new TrackRepository())->releaseLock($trackId);
         echo json_encode(['ok' => true]);
+        exit;
+    }
+
+    if ($action === 'remote_command') {
+        // Fernsteuerung einer Slave-Session (siehe PlayerSession/app.js) -
+        // wird nicht hier ausgefuehrt (kein lokales Audio auf dieser Session),
+        // sondern nur als Befehl mit fortlaufender Sequenznummer hinterlegt.
+        // Die Master-Session holt ihn beim naechsten SSE-Tick ab und fuehrt
+        // ihn auf ihrer eigenen, tatsaechlich spielenden Audioquelle aus.
+        $command = (string) ($input['command'] ?? '');
+        if (!in_array($command, ['next', 'prev'], true)) {
+            json_fail(400, 'Unbekannter Befehl.');
+        }
+        $seq = (int) $settings->get('player_remote_cmd_seq', '0') + 1;
+        $settings->set('player_remote_cmd', $command);
+        $settings->set('player_remote_cmd_seq', (string) $seq);
+        echo json_encode(['ok' => true, 'seq' => $seq]);
         exit;
     }
 

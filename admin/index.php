@@ -3,6 +3,7 @@
 require __DIR__ . '/../bootstrap.php';
 
 use App\Auth;
+use App\PlayerSession;
 use App\Repositories\LibraryRepository;
 use App\Repositories\RequestRepository;
 use App\Repositories\TrackRepository;
@@ -10,6 +11,7 @@ use App\Repositories\UserRepository;
 use App\Util;
 
 Auth::requireLogin();
+PlayerSession::requireMasterOrRedirect();
 
 $pageTitle = 'Uebersicht';
 $activeNav = 'dashboard';

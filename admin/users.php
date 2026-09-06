@@ -4,10 +4,12 @@ require __DIR__ . '/../bootstrap.php';
 
 use App\Auth;
 use App\Csrf;
+use App\PlayerSession;
 use App\Repositories\UserRepository;
 use App\Util;
 
 Auth::requireLogin();
+PlayerSession::requireMasterOrRedirect();
 
 $repo = new UserRepository();
 $error = null;

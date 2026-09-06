@@ -26,12 +26,13 @@ if (!$noLogo && $logoExt !== '') {
 
 $logoSizePercent = (int) $settings->get('qr_logo_size_percent', '20');
 $logoBorderPx = (int) $settings->get('qr_logo_border_px', '6');
+$allowUnsafeSize = $settings->get('qr_logo_allow_unsafe_size', '0') === '1';
 
 header('Content-Type: image/svg+xml');
 header('Cache-Control: no-store');
 
 try {
-    echo QrCode::svg($requestUrl, 8, 4, '#000000', '#ffffff', QrCode::ECC_H, $logoPath, $logoExt, $logoSizePercent, $logoBorderPx);
+    echo QrCode::svg($requestUrl, 8, 4, '#000000', '#ffffff', QrCode::ECC_H, $logoPath, $logoExt, $logoSizePercent, $logoBorderPx, $allowUnsafeSize);
 } catch (\Throwable $e) {
     // Oeffentlicher, nicht angemeldeter Endpunkt - keine internen
     // Exception-Details (Pfade etc.) nach aussen geben, nur intern loggen.

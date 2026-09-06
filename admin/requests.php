@@ -4,8 +4,10 @@ require __DIR__ . '/../bootstrap.php';
 
 use App\Auth;
 use App\Csrf;
+use App\PlayerSession;
 
 Auth::requireLogin();
+PlayerSession::requireMasterOrRedirect();
 
 $pageTitle = 'Wunschliste';
 $activeNav = 'requests';

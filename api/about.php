@@ -19,6 +19,7 @@ $appName = (new SettingRepository())->get('app_name', 'Party Player - pan1k.de')
 echo json_encode([
     'app_name' => $appName,
     'version' => APP_VERSION,
+    'website' => 'https://kiezfuchs.de',
     // Keine Drittanbieter-Bibliotheken im Einsatz (kein Composer/npm, keine
     // CDN-Einbindungen) - QrCode.php und Id3Reader.php sind eigene
     // Implementierungen oeffentlicher Standards, daher hier bewusst leer.

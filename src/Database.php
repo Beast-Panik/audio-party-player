@@ -21,7 +21,7 @@ final class Database
      * hoehere Code-Version, schickt einen angemeldeten Admin automatisch zu
      * install.php und die Migration laeuft dort erst nach einem Klick.
      */
-    public const SCHEMA_VERSION = 6;
+    public const SCHEMA_VERSION = 7;
 
     public static function get(): \PDO
     {
@@ -125,6 +125,14 @@ final class Database
         self::ensureColumn($pdo, $driver, 'tracks', 'lock_released_at', $driver === 'mysql' ? 'DATETIME NULL' : 'TEXT');
         self::ensureColumn($pdo, $driver, 'tracks', 'removed_at', $driver === 'mysql' ? 'DATETIME NULL' : 'TEXT');
         self::ensureColumn($pdo, $driver, 'track_reactions', 'ip_hash', $driver === 'mysql' ? 'VARCHAR(64) NULL' : 'TEXT');
+        // "Spielinstanz"-Zaehler: wird bei jedem (Wieder-)Start eines Tracks
+        // hochgezaehlt (siehe TrackRepository::bumpPlaySeq(), aufgerufen von
+        // api/playlist.php Action set_now_playing) - track_reactions.play_seq
+        // haelt fest, zu welcher Spielinstanz eine Herz-Reaktion gehoert, damit
+        // ein Gast pro Track UND Wiedergabe (nicht fuer immer) nur einmal
+        // reagieren kann und beim erneuten Abspielen wieder darf.
+        self::ensureColumn($pdo, $driver, 'tracks', 'play_seq', $driver === 'mysql' ? 'INT NOT NULL DEFAULT 0' : 'INTEGER NOT NULL DEFAULT 0');
+        self::ensureColumn($pdo, $driver, 'track_reactions', 'play_seq', $driver === 'mysql' ? 'INT NOT NULL DEFAULT 0' : 'INTEGER NOT NULL DEFAULT 0');
 
         self::runStatements($pdo, [
             $driver === 'mysql'

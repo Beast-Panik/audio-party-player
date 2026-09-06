@@ -3,6 +3,7 @@
 require __DIR__ . '/../bootstrap.php';
 
 use App\Auth;
+use App\PlayerSession;
 use App\Repositories\PlaylistRepository;
 use App\Repositories\RequestRepository;
 use App\Repositories\SettingRepository;
@@ -61,6 +62,16 @@ function events_payload_admin(): array
             'title' => $settings->get('now_playing_title', '') ?: null,
             'artist' => $settings->get('now_playing_artist', '') ?: null,
         ],
+        // Master/Slave (siehe PlayerSession): is_master haelt den Heartbeat
+        // dieser Session frisch bzw. lasst sie die Rolle uebernehmen, falls
+        // sie gerade frei/verwaist ist. remote_cmd_seq/remote_cmd transportieren
+        // Fernsteuerungs-Befehle einer Slave-Session (Skip vor/zurueck) zum
+        // Master, der sie als einziger tatsaechlich lokal ausfuehrt (dort laeuft
+        // die eigentliche Audiowiedergabe) - siehe api/playlist.php Action
+        // remote_command und initTrackPlayer() in app.js.
+        'is_master' => PlayerSession::touch(),
+        'remote_cmd_seq' => (int) $settings->get('player_remote_cmd_seq', '0'),
+        'remote_cmd' => $settings->get('player_remote_cmd', '') ?: null,
         'reaction_count' => $trackId ? (new TrackReactionRepository())->countForTrack($trackId) : 0,
         'auto_dj' => $settings->get('auto_dj_enabled', '0') === '1',
         'crossfade_enabled' => $settings->get('crossfade_enabled', '0') === '1',

@@ -48,6 +48,12 @@ final class UserRepository
         $stmt->execute([password_hash($password, PASSWORD_DEFAULT), $id]);
     }
 
+    public function updateUsername(int $id, string $username): void
+    {
+        $stmt = Database::get()->prepare('UPDATE users SET username = ? WHERE id = ?');
+        $stmt->execute([$username, $id]);
+    }
+
     public function delete(int $id): void
     {
         $stmt = Database::get()->prepare('DELETE FROM users WHERE id = ?');
