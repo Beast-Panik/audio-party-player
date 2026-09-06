@@ -12,6 +12,9 @@ use App\Util;
  */
 final class GuestProfileRepository
 {
+    /** Wie lange ein einmal gesetzter Gast-Name gilt, bevor ein neuer vergeben werden darf. */
+    public const NAME_LOCK_HOURS = 24;
+
     public function find(string $guestToken): ?array
     {
         $stmt = Database::get()->prepare('SELECT * FROM guest_profiles WHERE guest_token = ?');
@@ -27,7 +30,7 @@ final class GuestProfileRepository
      * werden. Gibt in jedem Fall den (neuen oder weiterhin gesperrten)
      * Namen zurueck.
      */
-    public function lockName(string $guestToken, string $name, int $hours = 24): string
+    public function lockName(string $guestToken, string $name, int $hours = self::NAME_LOCK_HOURS): string
     {
         $existing = $this->find($guestToken);
         $cutoff = date('Y-m-d H:i:s', time() - $hours * 3600);

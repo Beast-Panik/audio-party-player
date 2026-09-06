@@ -86,28 +86,47 @@ final class RequestRepository
     }
 
     /**
-     * Zusammenfassung pro Gast (die den Wunsch-Limit-Cookie im Zeitfenster
-     * genutzt haben) fuer die Admin-Uebersicht: Name, Anzahl genutzter
-     * Wuensche und aeltester zaehlender Wunsch (fuer den Reset-Countdown).
+     * Zusammenfassung aller Gaeste mit (noch) gueltigem Namens-Lock fuer die
+     * Admin-Uebersicht: Name, verbrauchtes Wunsch-Kontingent im aktuellen
+     * Zeitfenster und aeltester zaehlender Wunsch (fuer den Reset-Countdown).
+     * Ein Gast bleibt hier sichtbar, solange sein Name gueltig ist - auch
+     * wenn er aktuell keine offenen Wuensche im Limit-Fenster hat.
      */
-    public function listGuestsSummary(int $minutes): array
+    public function listGuestsSummary(int $nameLockHours, int $limitMinutes): array
     {
-        $since = date('Y-m-d H:i:s', time() - $minutes * 60);
-        $sql = "SELECT r.guest_token,
-                       gp.name AS locked_name,
-                       MAX(r.guest_name) AS last_guest_name,
-                       COUNT(*) AS used,
-                       MIN(r.created_at) AS oldest_created_at,
-                       MAX(r.created_at) AS last_active
-                FROM requests r
-                LEFT JOIN guest_limit_resets grl ON grl.guest_token = r.guest_token
-                LEFT JOIN guest_profiles gp ON gp.guest_token = r.guest_token
-                WHERE r.guest_token IS NOT NULL
-                  AND r.created_at >= CASE WHEN grl.reset_at IS NOT NULL AND grl.reset_at > ? THEN grl.reset_at ELSE ? END
-                GROUP BY r.guest_token, gp.name
-                ORDER BY last_active DESC";
+        $sinceProfile = date('Y-m-d H:i:s', time() - $nameLockHours * 3600);
+        $stmt = Database::get()->prepare(
+            'SELECT guest_token, name, created_at FROM guest_profiles WHERE created_at >= ? ORDER BY created_at DESC'
+        );
+        $stmt->execute([$sinceProfile]);
+        $profiles = $stmt->fetchAll();
+
+        $result = [];
+        foreach ($profiles as $p) {
+            $token = $p['guest_token'];
+            $used = $this->countRecentByGuestToken($token, $limitMinutes);
+            $result[] = [
+                'guest_token' => $token,
+                'name' => $p['name'],
+                'used' => $used,
+                'oldest_created_at' => $used > 0 ? $this->oldestRecentByGuestToken($token, $limitMinutes) : null,
+                'profile_created_at' => $p['created_at'],
+            ];
+        }
+        return $result;
+    }
+
+    /** Kompletter Wunsch-Verlauf eines Gasts (Admin-Detailansicht). */
+    public function listByGuestToken(string $guestToken, int $limit = 200): array
+    {
+        $sql = 'SELECT r.*, t.title, t.artist, t.album, t.duration_seconds
+                FROM requests r JOIN tracks t ON t.id = r.track_id
+                WHERE r.guest_token = ?
+                ORDER BY r.created_at DESC LIMIT ?';
         $stmt = Database::get()->prepare($sql);
-        $stmt->execute([$since, $since]);
+        $stmt->bindValue(1, $guestToken);
+        $stmt->bindValue(2, $limit, \PDO::PARAM_INT);
+        $stmt->execute();
         return $stmt->fetchAll();
     }
 

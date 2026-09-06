@@ -5,6 +5,7 @@ require __DIR__ . '/../bootstrap.php';
 use App\Auth;
 use App\Csrf;
 use App\Repositories\SettingRepository;
+use App\Repositories\UserRepository;
 
 /**
  * Prueft die Player-Sperr-PIN. Die eigentliche Sperre (Blur-Overlay) ist
@@ -68,6 +69,40 @@ if ($method === 'POST') {
         }
 
         json_fail(401, 'Falsche PIN.');
+    }
+
+    if (($input['action'] ?? '') === 'unlock_with_credentials') {
+        // Notfall-Entsperrung mit Benutzername/Passwort - eigener,
+        // unabhaengiger Zaehler, damit ein mutwillig herbeigefuehrter
+        // PIN-Sperrzustand (z.B. ein Gast, der absichtlich die PIN
+        // falsch eintippt) den echten Admin nicht dauerhaft aussperren
+        // kann. Ein erfolgreicher Login hier hebt auch die PIN-Sperre auf.
+        $credBlockedUntil = (int) ($_SESSION['lock_cred_blocked_until'] ?? 0);
+        if (time() < $credBlockedUntil) {
+            json_fail(429, 'Zu viele Fehlversuche. Bitte kurz warten und erneut versuchen.');
+        }
+
+        $username = trim((string) ($input['username'] ?? ''));
+        $password = (string) ($input['password'] ?? '');
+        $user = $username !== '' ? (new UserRepository())->findByUsername($username) : null;
+
+        if ($user && $password !== '' && password_verify($password, $user['password_hash'])) {
+            $_SESSION['lock_attempts'] = 0;
+            $_SESSION['lock_blocked_until'] = 0;
+            $_SESSION['lock_cred_attempts'] = 0;
+            echo json_encode(['ok' => true]);
+            exit;
+        }
+
+        $credAttempts = (int) ($_SESSION['lock_cred_attempts'] ?? 0) + 1;
+        $_SESSION['lock_cred_attempts'] = $credAttempts;
+        if ($credAttempts >= 5) {
+            $_SESSION['lock_cred_blocked_until'] = time() + 30;
+            $_SESSION['lock_cred_attempts'] = 0;
+            json_fail(429, 'Zu viele Fehlversuche. Bitte 30 Sekunden warten.');
+        }
+
+        json_fail(401, 'Benutzername oder Passwort falsch.');
     }
 
     json_fail(400, 'Unbekannte Aktion.');

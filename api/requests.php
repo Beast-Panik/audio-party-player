@@ -48,13 +48,14 @@ if ($method === 'GET') {
     $status = $_GET['status'] ?? null;
 
     if ($status === 'guests') {
-        // Admin-Uebersicht: welche Gaeste haben wie viele Wuensche im
-        // aktuellen Zeitfenster verbraucht (siehe admin/requests.php).
+        // Admin-Uebersicht: alle Gaeste mit (noch) gueltigem Namens-Lock,
+        // mit verbleibendem Wunsch-Kontingent im aktuellen Zeitfenster
+        // (siehe admin/requests.php) - bleibt sichtbar, solange der Name gilt.
         Auth::requireLoginApi();
         $settings = new SettingRepository();
         $limitCount = (int) $settings->get('guest_limit_count', '3');
         $limitMinutes = (int) $settings->get('guest_limit_minutes', '60');
-        $rows = $repo->listGuestsSummary($limitMinutes);
+        $rows = $repo->listGuestsSummary(GuestProfileRepository::NAME_LOCK_HOURS, $limitMinutes);
         echo json_encode(['guests' => array_map(static function (array $g) use ($limitCount, $limitMinutes): array {
             $used = (int) $g['used'];
             $waitSeconds = $g['oldest_created_at']
@@ -62,10 +63,31 @@ if ($method === 'GET') {
                 : 0;
             return [
                 'guest_token' => $g['guest_token'],
-                'name' => $g['locked_name'] ?: ($g['last_guest_name'] ?: '-'),
+                'name' => $g['name'] ?: '-',
                 'used' => $used,
                 'remaining' => $limitCount > 0 ? max(0, $limitCount - $used) : null,
                 'wait_seconds' => $waitSeconds,
+            ];
+        }, $rows)]);
+        exit;
+    }
+
+    if ($status === 'guest_history') {
+        // Admin-Detailansicht: kompletter Wunsch-Verlauf eines einzelnen
+        // Gasts (Klick auf den Namen in der Gaeste-Uebersicht).
+        Auth::requireLoginApi();
+        $guestToken = (string) ($_GET['guest_token'] ?? '');
+        if ($guestToken === '') {
+            json_fail(400, 'Kein Gast angegeben.');
+        }
+        $rows = $repo->listByGuestToken($guestToken);
+        echo json_encode(['requests' => array_map(static function (array $r): array {
+            return [
+                'id' => (int) $r['id'],
+                'title' => $r['title'],
+                'artist' => $r['artist'],
+                'status' => $r['status'],
+                'created_at' => $r['created_at'],
             ];
         }, $rows)]);
         exit;

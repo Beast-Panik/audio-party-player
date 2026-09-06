@@ -38,13 +38,22 @@ define('APP_BASE_PATH', app_base_path());
 
 // Wird im Sidebar-Footer angezeigt - bei jedem Release manuell auf den neuen
 // Tag-Namen anpassen (siehe README/Release-Workflow).
-define('APP_VERSION', 'v0.7.0-alpha');
+define('APP_VERSION', 'v0.7.1-alpha');
 
-/** Baut eine root-relative URL innerhalb der App, egal in welchem Unterordner sie liegt. */
+/**
+ * Baut eine root-relative URL innerhalb der App, egal in welchem Unterordner
+ * sie liegt. Fuer assets/ haengt sie zusaetzlich die App-Version als
+ * Cache-Buster an - sonst liefern Browser (und manche Hoster/CDNs) nach
+ * einem Update oft noch die alte, gecachte CSS/JS-Datei aus.
+ */
 function app_url(string $path = ''): string
 {
     $path = ltrim($path, '/');
-    return APP_BASE_PATH . '/' . $path;
+    $url = APP_BASE_PATH . '/' . $path;
+    if (strpos($path, 'assets/') === 0) {
+        $url .= '?v=' . urlencode(APP_VERSION);
+    }
+    return $url;
 }
 
 use App\Auth;

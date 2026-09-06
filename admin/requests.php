@@ -29,10 +29,24 @@ require __DIR__ . '/../templates/admin_header.php';
 
 <div class="pnk-card" id="guests-card" hidden>
   <p class="pnk-text-muted" style="font-size:12.5px; margin:0 0 12px;">
-    Gäste, die sich in der aktuellen Zeitspanne Songs gewünscht haben, mit verbleibendem Kontingent
-    und Reset-Countdown. Über "Zurücksetzen" kann das Kontingent einer Person vorzeitig erneuert werden.
+    Alle Gäste mit gültigem Namens-Lock (24 Std. nach der ersten Namenseingabe), mit verbleibendem
+    Kontingent und Reset-Countdown. Auf einen Namen klicken zeigt den Wunsch-Verlauf. Über
+    "Zurücksetzen" kann das Kontingent einer Person vorzeitig erneuert werden.
   </p>
   <div id="guests-list"><div class="app-empty">Lade…</div></div>
+</div>
+
+<div class="pnk-modal-backdrop" id="guest-history-backdrop" hidden>
+  <div class="pnk-modal" style="width:480px;">
+    <div class="pnk-modal__header">
+      <span class="pnk-card__title" id="guest-history-title">Wunsch-Verlauf</span>
+      <button class="pnk-btn pnk-btn--ghost pnk-btn--icon" id="guest-history-close" type="button" aria-label="Schließen">✕</button>
+    </div>
+    <div id="guest-history-body"><div class="app-empty">Lade…</div></div>
+    <div class="pnk-modal__footer">
+      <button class="pnk-btn" id="guest-history-close-2" type="button">Schließen</button>
+    </div>
+  </div>
 </div>
 
 <script>window.APP_CSRF = <?= json_encode(Csrf::token()) ?>; window.APP_BASE = <?= json_encode(app_url('')) ?>;</script>

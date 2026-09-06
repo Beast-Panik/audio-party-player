@@ -66,6 +66,7 @@
    * dauerhaft, danach schaltet sich die Suche frei. Bis dahin bleiben
    * Suche/Ergebnisse/Begruessung verborgen.
    * ================================================================== */
+  var nameCard = document.getElementById('name-card');
   var nameInput = document.getElementById('guest-name');
   var confirmNameBtn = document.getElementById('btn-confirm-name');
   var searchCard = document.getElementById('search-card');
@@ -108,8 +109,7 @@
   function unlockSearch(name, info) {
     lockedIn = true;
     nameInput.value = name;
-    nameInput.readOnly = true;
-    if (confirmNameBtn) confirmNameBtn.hidden = true;
+    nameCard.hidden = true;
     searchCard.hidden = false;
     resultsCard.hidden = false;
     renderGreeting(name, info);

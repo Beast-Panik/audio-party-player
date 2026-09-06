@@ -88,13 +88,13 @@
 
   function renderGuests(guests) {
     if (!guests.length) {
-      guestsList.innerHTML = '<div class="app-empty">Noch keine Gäste-Wünsche in diesem Zeitfenster.</div>';
+      guestsList.innerHTML = '<div class="app-empty">Aktuell keine Gäste mit gültigem Namens-Lock.</div>';
       return;
     }
     var html = '<table class="pnk-table"><thead><tr><th>Name</th><th>Verbleibend</th><th>Reset in</th><th></th></tr></thead><tbody>';
     guests.forEach(function (g) {
       html += '<tr data-token="' + escapeHtml(g.guest_token) + '">' +
-        '<td>' + escapeHtml(g.name) + '</td>' +
+        '<td><button type="button" class="btn-guest-history" data-token="' + escapeHtml(g.guest_token) + '" data-name="' + escapeHtml(g.name) + '" style="background:none; border:0; padding:0; color:var(--pnk-accent); cursor:pointer; text-decoration:underline; font:inherit;">' + escapeHtml(g.name) + '</button></td>' +
         '<td>' + (g.remaining === null ? 'unbegrenzt' : g.remaining) + '</td>' +
         '<td class="app-guest-reset-countdown" data-seconds="' + g.wait_seconds + '">' + formatDuration(g.wait_seconds) + '</td>' +
         '<td style="text-align:right;"><button class="pnk-btn pnk-btn--ghost pnk-btn--sm btn-reset-guest" data-token="' + escapeHtml(g.guest_token) + '">Zurücksetzen</button></td>' +
@@ -109,6 +109,49 @@
           .then(loadGuests);
       });
     });
+    guestsList.querySelectorAll('.btn-guest-history').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        openGuestHistory(btn.getAttribute('data-token'), btn.getAttribute('data-name'));
+      });
+    });
+  }
+
+  /* Verlaufs-Modal: kompletter Wunsch-Verlauf eines einzelnen Gasts. */
+  var guestHistoryBackdrop = document.getElementById('guest-history-backdrop');
+  var guestHistoryBody = document.getElementById('guest-history-body');
+  var guestHistoryTitle = document.getElementById('guest-history-title');
+
+  function closeGuestHistory() { guestHistoryBackdrop.hidden = true; }
+
+  function openGuestHistory(guestToken, name) {
+    guestHistoryTitle.textContent = 'Wunsch-Verlauf – ' + name;
+    guestHistoryBody.innerHTML = '<div class="app-empty">Lade…</div>';
+    guestHistoryBackdrop.hidden = false;
+    fetch(api('api/requests.php?status=guest_history&guest_token=' + encodeURIComponent(guestToken)))
+      .then(function (r) { return r.json(); })
+      .then(function (j) {
+        var rows = j.requests || [];
+        if (!rows.length) {
+          guestHistoryBody.innerHTML = '<div class="app-empty">Noch keine Wünsche.</div>';
+          return;
+        }
+        var html = '<table class="pnk-table"><thead><tr><th>Song</th><th>Status</th><th>Zeit</th></tr></thead><tbody>';
+        rows.forEach(function (r) {
+          html += '<tr>' +
+            '<td><strong>' + escapeHtml(r.title) + '</strong><br><span class="pnk-text-muted" style="font-size:12px;">' + escapeHtml(r.artist || '') + '</span></td>' +
+            '<td>' + statusBadge(r.status) + '</td>' +
+            '<td style="font-size:12px; color:var(--pnk-text-muted);">' + escapeHtml(r.created_at) + '</td>' +
+          '</tr>';
+        });
+        html += '</tbody></table>';
+        guestHistoryBody.innerHTML = html;
+      });
+  }
+
+  if (guestHistoryBackdrop) {
+    document.getElementById('guest-history-close').addEventListener('click', closeGuestHistory);
+    document.getElementById('guest-history-close-2').addEventListener('click', closeGuestHistory);
+    guestHistoryBackdrop.addEventListener('click', function (e) { if (e.target === guestHistoryBackdrop) closeGuestHistory(); });
   }
 
   function loadGuests() {

@@ -485,11 +485,15 @@
       playlistList.querySelectorAll('.btn-pl-play').forEach(function (btn) {
         var it = items.find(function (x) { return String(x.id) === btn.getAttribute('data-id'); });
         btn.addEventListener('click', function () {
-          if (!it) return;
-          var oldId = currentTrackId;
-          if (oldId !== null && oldId !== it.track_id) advanceOnServer(oldId);
-          loadAndPlay(it.track_id, it.title, it.artist);
-          setTimeout(refreshPlaylist, 250);
+          if (!it || crossfading) return;
+          // Nie hart schneiden: laeuft schon etwas, weich zum angeklickten
+          // Track ueberblenden (wie Vor/Zurueck) statt ihn hart zu starten.
+          if (currentTrackId === null) {
+            loadAndPlay(it.track_id, it.title, it.artist);
+            setTimeout(refreshPlaylist, 250);
+          } else {
+            beginCrossfade(it);
+          }
         });
       });
       playlistList.querySelectorAll('.btn-pl-remove').forEach(function (btn) {
@@ -1043,6 +1047,49 @@
         lockOverlay.hidden = false;
       }
     } catch (e) {}
+
+    // Notfall-Entsperrung mit Account-Login: unabhaengig von der PIN-Sperre
+    // (eigener Zaehler serverseitig), damit ein mutwillig blockierter
+    // PIN-Zaehler (z.B. ein Gast, der absichtlich falsch eintippt) den
+    // echten Admin nicht dauerhaft aussperren kann.
+    var lockCredToggle = document.getElementById('lock-cred-toggle');
+    var lockCredForm = document.getElementById('lock-cred-form');
+    var lockCredError = document.getElementById('lock-cred-error');
+    var lockUsername = document.getElementById('lock-username');
+    var lockPassword = document.getElementById('lock-password');
+    var lockCredSubmit = document.getElementById('lock-cred-submit');
+
+    if (lockCredToggle && lockCredForm) {
+      lockCredToggle.addEventListener('click', function () {
+        lockCredForm.hidden = !lockCredForm.hidden;
+        if (!lockCredForm.hidden) lockUsername.focus();
+      });
+
+      function submitCredentials() {
+        lockCredError.style.display = 'none';
+        postJson(api('api/lock.php'), {
+          action: 'unlock_with_credentials',
+          username: lockUsername.value,
+          password: lockPassword.value,
+          csrf_token: CSRF,
+        }).then(function (res) {
+          if (res.ok && res.body.ok) {
+            lockUsername.value = '';
+            lockPassword.value = '';
+            lockCredForm.hidden = true;
+            disengageLock();
+            return;
+          }
+          lockCredError.textContent = (res.body && res.body.error) || 'Anmeldung fehlgeschlagen.';
+          lockCredError.style.display = 'block';
+        });
+      }
+
+      lockCredSubmit.addEventListener('click', submitCredentials);
+      lockPassword.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') { e.preventDefault(); submitCredentials(); }
+      });
+    }
   }
 
   /* ================================================================== *
