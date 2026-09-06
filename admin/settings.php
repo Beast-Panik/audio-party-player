@@ -32,9 +32,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($form === 'anzeige') {
         Csrf::requireValid();
-        $settings->set('ticker_enabled', !empty($_POST['ticker_enabled']) ? '1' : '0');
-        $settings->set('countdown_enabled', !empty($_POST['countdown_enabled']) ? '1' : '0');
-        $success = 'Einstellungen gespeichert.';
+        $countdownFontSize = (int) ($_POST['countdown_font_size'] ?? 22);
+        if ($countdownFontSize < 12 || $countdownFontSize > 60) {
+            $error = 'Die Countdown-Größe muss zwischen 12 und 60 Pixel liegen.';
+        } else {
+            $settings->set('ticker_enabled', !empty($_POST['ticker_enabled']) ? '1' : '0');
+            $settings->set('countdown_enabled', !empty($_POST['countdown_enabled']) ? '1' : '0');
+            $settings->set('countdown_font_size', (string) $countdownFontSize);
+            $success = 'Einstellungen gespeichert.';
+        }
     }
 
     if ($form === 'gaeste_wuensche') {
@@ -111,6 +117,7 @@ $recentPlayedLockHours = (int) $settings->get('recent_played_lock_hours', '4');
 $previewSeconds = (int) $settings->get('preview_seconds', '20');
 $tickerEnabled = $settings->get('ticker_enabled', '0') === '1';
 $countdownEnabled = $settings->get('countdown_enabled', '0') === '1';
+$countdownFontSize = (int) $settings->get('countdown_font_size', '22');
 $crossfadeEnabled = $settings->get('crossfade_enabled', '0') === '1';
 $crossfadeSeconds = (int) $settings->get('crossfade_seconds', '3');
 
@@ -160,10 +167,16 @@ require __DIR__ . '/../templates/admin_header.php';
         <input class="pnk-checkbox" type="checkbox" name="ticker_enabled" value="1" <?= $tickerEnabled ? 'checked' : '' ?>>
         <span>Ticker mit aktuellem Song im Menü anzeigen</span>
       </label>
-      <label class="pnk-field-row" style="cursor:pointer;">
+      <label class="pnk-field-row" style="cursor:pointer; margin-bottom:12px;">
         <input class="pnk-checkbox" type="checkbox" name="countdown_enabled" value="1" <?= $countdownEnabled ? 'checked' : '' ?>>
         <span>Countdown bis zum nächsten Track im Menü anzeigen</span>
       </label>
+      <label class="pnk-label" for="countdown_font_size">Countdown-Größe im Menü (Schriftgröße in Pixel)</label>
+      <div style="display:flex; align-items:center; gap:12px; max-width:360px;">
+        <input type="range" id="countdown_font_size" name="countdown_font_size" min="12" max="60" step="1" value="<?= $countdownFontSize ?>" style="flex:1;" oninput="document.getElementById('countdown_font_size_value').textContent = this.value + ' px'; document.getElementById('countdown-size-preview').style.fontSize = this.value + 'px';">
+        <span id="countdown_font_size_value" class="pnk-text-muted" style="min-width:48px;"><?= $countdownFontSize ?> px</span>
+      </div>
+      <p class="pnk-text-muted" style="font-size:12px; margin:8px 0 0;">Vorschau: <span id="countdown-size-preview" style="font-family:var(--pnk-font-mono); font-weight:700; color:var(--pnk-accent-warm); font-size:<?= $countdownFontSize ?>px;">-3:21</span></p>
       <button class="pnk-btn pnk-btn--primary" type="submit" style="margin-top:16px;">Speichern</button>
     </form>
   </div>

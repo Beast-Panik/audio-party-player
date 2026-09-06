@@ -235,10 +235,9 @@
    ========================================================================== */
 .app-shell {
   grid-template-columns: 220px 1fr;
-  grid-template-rows: auto auto auto 1fr;
+  grid-template-rows: auto auto 1fr;
   grid-template-areas:
     "sidebar topbar"
-    "sidebar ticker"
     "sidebar player"
     "sidebar main";
   transition: grid-template-columns 160ms ease;
@@ -292,20 +291,20 @@ html.app-sidebar-preload-collapsed .app-shell {
   text-align: center;
 }
 .app-sidebar-countdown[hidden] { display: none; }
-.app-sidebar-countdown .app-countdown { font-size: 22px; }
+.app-sidebar-countdown .app-countdown { font-size: var(--app-countdown-size, 22px); }
 .app-sidebar-toggle {
   display: none;
 }
 
-/* Ticker: laufende Anzeige des aktuellen Songs im Menuebereich. */
-.app-ticker[hidden] { display: none; }
-.app-ticker {
-  grid-area: ticker;
+/* Ticker: laufende Anzeige des aktuellen Songs im Sidebar-Menue (oberhalb
+   des Countdowns) - ein-/ausschaltbar ueber Einstellungen > Anzeige. */
+.app-sidebar-ticker[hidden] { display: none; }
+.app-sidebar-ticker {
+  box-sizing: border-box;
+  width: 100%;
   overflow: hidden;
-  background: var(--pnk-surface-sunken);
-  border-bottom: 1px solid var(--pnk-border);
-  padding: 6px 0;
   white-space: nowrap;
+  padding: 0 10px 8px;
 }
 .app-ticker__track {
   display: inline-block;
@@ -472,10 +471,12 @@ html.app-sidebar-preload-collapsed .app-sidebar {
 .app-sidebar-is-collapsed .app-sidebar-heading,
 .app-sidebar-is-collapsed .app-sidebar-version,
 .app-sidebar-is-collapsed .app-sidebar-countdown,
+.app-sidebar-is-collapsed .app-sidebar-ticker,
 html.app-sidebar-preload-collapsed .app-nav-label,
 html.app-sidebar-preload-collapsed .app-sidebar-heading,
 html.app-sidebar-preload-collapsed .app-sidebar-version,
-html.app-sidebar-preload-collapsed .app-sidebar-countdown {
+html.app-sidebar-preload-collapsed .app-sidebar-countdown,
+html.app-sidebar-preload-collapsed .app-sidebar-ticker {
   display: none;
 }
 .app-sidebar-is-collapsed .app-sidebar-collapse-toggle {
@@ -568,7 +569,6 @@ html.app-sidebar-preload-collapsed .app-sidebar-countdown {
     grid-template-columns: 1fr;
     grid-template-areas:
       "topbar"
-      "ticker"
       "player"
       "main";
   }
@@ -594,7 +594,8 @@ html.app-sidebar-preload-collapsed .app-sidebar-countdown {
   .app-sidebar .app-sidebar-heading {
     display: block;
   }
-  .app-sidebar .app-sidebar-countdown:not([hidden]) {
+  .app-sidebar .app-sidebar-countdown:not([hidden]),
+  .app-sidebar .app-sidebar-ticker:not([hidden]) {
     display: block;
   }
   .app-shell.app-sidebar-is-open .app-sidebar-backdrop {

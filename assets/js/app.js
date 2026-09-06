@@ -151,7 +151,7 @@
         return;
       }
       countdownWrap.hidden = false;
-      countdownValue.textContent = formatDuration(activeAudio.duration - activeAudio.currentTime);
+      countdownValue.textContent = '-' + formatDuration(activeAudio.duration - activeAudio.currentTime);
     }
 
     /** Restlaufzeit des aktiven Tracks in Sekunden, oder null wenn (noch) unbekannt. */

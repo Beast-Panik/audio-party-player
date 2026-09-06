@@ -14,6 +14,7 @@ $appName = $settingsRepo->get('app_name', 'Party Player - pan1k.de');
 $hasLockPin = (bool) $settingsRepo->get('lock_pin_hash');
 $tickerEnabled = $settingsRepo->get('ticker_enabled', '0') === '1';
 $countdownEnabled = $settingsRepo->get('countdown_enabled', '0') === '1';
+$countdownFontSize = (int) $settingsRepo->get('countdown_font_size', '22');
 $playlistCountForNav = Auth::isLoggedIn() ? (new PlaylistRepository())->count() : 0;
 
 if (!function_exists('nav_item')) {
@@ -66,10 +67,6 @@ if (!function_exists('nav_item')) {
     </div>
   </header>
 
-  <div class="app-ticker" id="ticker-wrap" hidden>
-    <div class="app-ticker__track" id="ticker-track"><span id="ticker-text"></span></div>
-  </div>
-
   <?php if (Auth::isLoggedIn()): ?>
   <div class="app-player-bar" id="nowplaying" hidden>
     <audio id="audio-el" preload="auto"></audio>
@@ -99,7 +96,10 @@ if (!function_exists('nav_item')) {
 
   <aside class="pnk-sidebar app-sidebar" id="sidebar">
     <button class="app-sidebar-collapse-toggle" id="sidebar-collapse-toggle" title="Menü einklappen" aria-label="Menü einklappen">‹</button>
-    <div class="app-sidebar-countdown" id="countdown-wrap" hidden>
+    <div class="app-sidebar-ticker" id="ticker-wrap" hidden>
+      <div class="app-ticker__track" id="ticker-track"><span id="ticker-text"></span></div>
+    </div>
+    <div class="app-sidebar-countdown" id="countdown-wrap" hidden style="--app-countdown-size: <?= $countdownFontSize ?>px;">
       <div class="app-countdown" id="countdown-value">--:--</div>
     </div>
     <h6 class="app-sidebar-heading">Party</h6>
