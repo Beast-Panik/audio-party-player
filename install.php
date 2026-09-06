@@ -6,7 +6,9 @@ use App\Auth;
 use App\Config;
 use App\Csrf;
 use App\Database;
+use App\LoginThrottle;
 use App\Repositories\UserRepository;
+use App\Util;
 
 function render_page(string $title, string $body): void
 {
@@ -145,32 +147,58 @@ if (!Config::isInstalled()) {
 // ---------------------------------------------------------------------
 $userRepo = new UserRepository();
 if ($userRepo->count() === 0) {
+    // Schritt 2 ist bis zum ersten Admin-Konto bewusst OHNE Login erreichbar
+    // (kann ja noch niemand haben) - das macht ihn aber zu einem oeffentlichen
+    // Wettlauf: wer zuerst hier ein Konto anlegt, uebernimmt die Installation.
+    // Zwei Bremsen dagegen: (1) ein festes Zeitfenster ab dem Anlegen von
+    // config/config.php (Schritt 1), danach ist Schritt 2 gesperrt und muss
+    // durch Loeschen von config/config.php (Datei-/FTP-Zugriff noetig) neu
+    // gestartet werden, (2) eine IP-Bremse gegen automatisiertes Durchprobieren
+    // innerhalb dieses Fensters (siehe LoginThrottle, gleicher Mechanismus wie
+    // login.php).
+    $configAge = time() - (int) @filemtime(__DIR__ . '/config/config.php');
+    $setupWindowSeconds = 30 * 60;
+    $expired = $configAge > $setupWindowSeconds;
+
     $error = null;
-    if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    $waitSeconds = $expired ? 0 : LoginThrottle::secondsUntilAllowed('install_admin');
+    if ($expired) {
+        $error = 'Das Zeitfenster fuer die Erst-Einrichtung ist abgelaufen. Bitte config/config.php auf dem Server loeschen und die Einrichtung neu starten.';
+    } elseif ($waitSeconds > 0) {
+        $error = 'Zu viele Fehlversuche. Bitte in ' . Util::formatWait($waitSeconds) . ' erneut versuchen.';
+    } elseif ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $username = trim($_POST['username'] ?? '');
         $password = (string) ($_POST['password'] ?? '');
         $password2 = (string) ($_POST['password2'] ?? '');
         if ($username === '' || strlen($password) < 8) {
+            LoginThrottle::recordFailure('install_admin');
             $error = 'Benutzername erforderlich, Passwort mindestens 8 Zeichen.';
         } elseif ($password !== $password2) {
+            LoginThrottle::recordFailure('install_admin');
             $error = 'Die Passwoerter stimmen nicht ueberein.';
         } else {
             $userRepo->create($username, $password, 'admin');
+            LoginThrottle::recordSuccess('install_admin');
             header('Location: login.php');
             exit;
         }
     }
 
     $body = '<p class="pnk-text-muted">Schritt 2 von 2: Erstes Admin-Konto anlegen.</p>';
+    if (!$expired) {
+        $body .= '<p class="pnk-text-muted" style="font-size:12px;">Aus Sicherheitsgruenden nur fuer kurze Zeit nach dem Hochladen moeglich - bitte jetzt gleich abschliessen.</p>';
+    }
     if ($error) {
         $body .= '<div class="pnk-alert pnk-alert--danger" style="margin-bottom:16px;">' . htmlspecialchars($error, ENT_QUOTES) . '</div>';
     }
-    $body .= '<form method="post" action="install.php">';
-    $body .= field('Benutzername', 'username');
-    $body .= field('Passwort (min. 8 Zeichen)', 'password', '', 'password');
-    $body .= field('Passwort wiederholen', 'password2', '', 'password');
-    $body .= '<button class="pnk-btn pnk-btn--primary" type="submit" style="width:100%; margin-top:8px;">Admin-Konto anlegen</button>';
-    $body .= '</form>';
+    if (!$expired && $waitSeconds <= 0) {
+        $body .= '<form method="post" action="install.php">';
+        $body .= field('Benutzername', 'username');
+        $body .= field('Passwort (min. 8 Zeichen)', 'password', '', 'password');
+        $body .= field('Passwort wiederholen', 'password2', '', 'password');
+        $body .= '<button class="pnk-btn pnk-btn--primary" type="submit" style="width:100%; margin-top:8px;">Admin-Konto anlegen</button>';
+        $body .= '</form>';
+    }
 
     render_page('Schritt 2', $body);
     exit;

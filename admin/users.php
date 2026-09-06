@@ -13,6 +13,21 @@ $repo = new UserRepository();
 $error = null;
 $success = null;
 
+/**
+ * Bestaetigt das AKTUELLE Passwort des gerade angemeldeten Admins - Pflicht
+ * vor dem Anlegen eines neuen Admin-Kontos oder dem Aendern eines
+ * (fremden ODER eigenen) Passworts. Ohne das koennte eine gekaperte Session
+ * (z.B. gestohlenes Cookie) sich stillschweigend einen dauerhaften
+ * Zugriffsweg schaffen bzw. einen anderen Admin uebernehmen, ohne dass der
+ * eigentliche Login-Schutz (Passwort) noch einmal greift.
+ */
+function currentPasswordConfirmed(UserRepository $repo): bool
+{
+    $me = $repo->findById((int) Auth::userId());
+    $current = (string) ($_POST['current_password'] ?? '');
+    return $me && $current !== '' && password_verify($current, $me['password_hash']);
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::requireValid();
     $action = $_POST['action'] ?? '';
@@ -20,7 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'create') {
         $username = trim($_POST['username'] ?? '');
         $password = (string) ($_POST['password'] ?? '');
-        if ($username === '' || strlen($password) < 8) {
+        if (!currentPasswordConfirmed($repo)) {
+            $error = 'Zur Bestaetigung bitte dein aktuelles Passwort eingeben.';
+        } elseif ($username === '' || strlen($password) < 8) {
             $error = 'Benutzername erforderlich, Passwort mindestens 8 Zeichen.';
         } elseif ($repo->usernameExists($username)) {
             $error = 'Dieser Benutzername existiert bereits.';
@@ -41,7 +58,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     } elseif ($action === 'password') {
         $id = (int) $_POST['id'];
         $password = (string) ($_POST['password'] ?? '');
-        if (strlen($password) < 8) {
+        if (!currentPasswordConfirmed($repo)) {
+            $error = 'Zur Bestaetigung bitte dein aktuelles Passwort eingeben.';
+        } elseif (strlen($password) < 8) {
             $error = 'Passwort muss mindestens 8 Zeichen haben.';
         } else {
             $repo->updatePassword($id, $password);
@@ -82,6 +101,8 @@ require __DIR__ . '/../templates/admin_header.php';
         <input class="pnk-input" type="password" name="password" minlength="8" required>
       </div>
     </div>
+    <label class="pnk-label" style="margin-top:12px;">Dein aktuelles Passwort (zur Bestätigung)</label>
+    <input class="pnk-input" type="password" name="current_password" autocomplete="current-password" required style="max-width:320px;">
     <button class="pnk-btn pnk-btn--primary" type="submit" style="margin-top:12px;">Anlegen</button>
   </form>
 </div>
@@ -106,6 +127,8 @@ require __DIR__ . '/../templates/admin_header.php';
                 <input type="hidden" name="id" value="<?= (int) $u['id'] ?>">
                 <label class="pnk-label">Neues Passwort</label>
                 <input class="pnk-input" type="password" name="password" minlength="8" required style="margin-bottom:8px;">
+                <label class="pnk-label">Dein aktuelles Passwort (zur Bestätigung)</label>
+                <input class="pnk-input" type="password" name="current_password" autocomplete="current-password" required style="margin-bottom:8px;">
                 <button class="pnk-btn pnk-btn--primary pnk-btn--sm" type="submit" style="width:100%;">Speichern</button>
               </form>
             </div>

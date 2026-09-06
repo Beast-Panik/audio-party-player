@@ -25,11 +25,28 @@ final class LogoProcessor
     // allemal.
     private const MAX_DIMENSION = 2000;
 
+    // Harte Obergrenze an den in der Datei ANGEGEBENEN Pixelmassen, geprueft
+    // per getimagesize() (liest nur den Header) BEVOR imagecreatefrompng/
+    // -webp die Datei tatsaechlich komplett dekodiert - eine kleine PNG/WEBP-
+    // Datei kann sich sonst auf eine riesige Pixelflaeche "entpacken"
+    // (Decompression Bomb) und GD zwingen, mehrere hundert MB/GB zu
+    // allozieren, bevor MAX_DIMENSION unten ueberhaupt greifen wuerde.
+    private const MAX_UPLOAD_PIXELS = 40_000_000; // z.B. 6320x6320
+
     /** Liest $srcPath, schneidet transparente Raender weg (falls moeglich/noetig) und schreibt das Ergebnis nach $destPath. */
     public static function saveTrimmed(string $srcPath, string $destPath, string $ext): void
     {
         if (!extension_loaded('gd') || !in_array($ext, ['png', 'webp'], true)) {
             // JPG kann nie transparent sein - Original 1:1 uebernehmen.
+            copy($srcPath, $destPath);
+            return;
+        }
+
+        $info = @getimagesize($srcPath);
+        if ($info === false || $info[0] <= 0 || $info[1] <= 0 || $info[0] * $info[1] > self::MAX_UPLOAD_PIXELS) {
+            // Zu gross (oder Header nicht lesbar) - Original unveraendert
+            // uebernehmen statt zu dekodieren; api/qr.php verzichtet dann
+            // beim Anzeigen einfach auf ein Logo statt einen Fehler zu zeigen.
             copy($srcPath, $destPath);
             return;
         }
@@ -137,6 +154,14 @@ final class LogoProcessor
     public static function composite(string $logoPath, string $ext, int $boxSize, int $borderPx): ?string
     {
         if (!extension_loaded('gd') || $boxSize <= 0 || !is_file($logoPath)) {
+            return null;
+        }
+        // Wird bei jedem Aufruf des oeffentlichen, nicht angemeldeten
+        // api/qr.php durchlaufen - dieselbe Decompression-Bomb-Bremse wie in
+        // saveTrimmed() ist hier daher besonders wichtig (nicht nur beim
+        // Upload selbst pruefen, auch bei jedem spaeteren Rendern).
+        $info = @getimagesize($logoPath);
+        if ($info === false || $info[0] <= 0 || $info[1] <= 0 || $info[0] * $info[1] > self::MAX_UPLOAD_PIXELS) {
             return null;
         }
         $src = match ($ext) {

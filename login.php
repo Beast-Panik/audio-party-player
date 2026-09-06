@@ -4,7 +4,9 @@ require __DIR__ . '/bootstrap.php';
 
 use App\Auth;
 use App\Csrf;
+use App\LoginThrottle;
 use App\Repositories\SettingRepository;
+use App\Util;
 
 if (Auth::isLoggedIn()) {
     header('Location: ' . app_url('player.php'));
@@ -14,13 +16,20 @@ if (Auth::isLoggedIn()) {
 $error = null;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::requireValid();
-    $username = trim($_POST['username'] ?? '');
-    $password = (string) ($_POST['password'] ?? '');
-    if ($username !== '' && $password !== '' && Auth::attempt($username, $password)) {
-        header('Location: ' . app_url('player.php'));
-        exit;
+    $waitSeconds = LoginThrottle::secondsUntilAllowed('login');
+    if ($waitSeconds > 0) {
+        $error = 'Zu viele Fehlversuche. Bitte in ' . Util::formatWait($waitSeconds) . ' erneut versuchen.';
+    } else {
+        $username = trim($_POST['username'] ?? '');
+        $password = (string) ($_POST['password'] ?? '');
+        if ($username !== '' && $password !== '' && Auth::attempt($username, $password)) {
+            LoginThrottle::recordSuccess('login');
+            header('Location: ' . app_url('player.php'));
+            exit;
+        }
+        LoginThrottle::recordFailure('login');
+        $error = 'Benutzername oder Passwort falsch.';
     }
-    $error = 'Benutzername oder Passwort falsch.';
 }
 
 $appName = (new SettingRepository())->get('app_name', 'Party Player - pan1k.de');

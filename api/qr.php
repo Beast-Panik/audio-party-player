@@ -33,7 +33,10 @@ header('Cache-Control: no-store');
 try {
     echo QrCode::svg($requestUrl, 8, 4, '#000000', '#ffffff', QrCode::ECC_H, $logoPath, $logoExt, $logoSizePercent, $logoBorderPx);
 } catch (\Throwable $e) {
+    // Oeffentlicher, nicht angemeldeter Endpunkt - keine internen
+    // Exception-Details (Pfade etc.) nach aussen geben, nur intern loggen.
+    error_log('qr.php: ' . $e->getMessage());
     http_response_code(500);
     header('Content-Type: text/plain; charset=utf-8');
-    echo 'QR-Code konnte nicht erzeugt werden: ' . $e->getMessage();
+    echo 'QR-Code konnte nicht erzeugt werden.';
 }

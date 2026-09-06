@@ -60,7 +60,13 @@ final class PlaylistRepository
         return $items[0] ?? null;
     }
 
-    /** Fuegt einen Track ans Ende der Playlist an - steht er schon drin, wird nicht doppelt eingereiht. */
+    /**
+     * Fuegt einen Track in die Playlist ein - steht er schon drin, wird nicht
+     * doppelt eingereiht. Gastwuensche (SOURCE_GUEST) haben Vorrang vor dem
+     * Auto-DJ: sie werden vor dem ersten Auto-DJ-Eintrag einsortiert statt
+     * ans Ende angehaengt, damit sie vor automatisch gewaehlten Songs dran
+     * sind. Manuelle/Auto-DJ-Eintraege werden weiterhin ans Ende angehaengt.
+     */
     public function add(int $trackId, string $source = self::SOURCE_MANUAL, ?int $requestId = null): int
     {
         $pdo = Database::get();
@@ -71,12 +77,54 @@ final class PlaylistRepository
             return (int) $existing['id'];
         }
 
+        if ($source === self::SOURCE_GUEST) {
+            return $this->insertAtIndex($trackId, $source, $requestId, $this->priorityInsertIndex());
+        }
+
         $nextPos = (int) $pdo->query('SELECT COALESCE(MAX(position), -1) + 1 AS p FROM playlist')->fetch()['p'];
         $stmt = $pdo->prepare(
             'INSERT INTO playlist (track_id, source, request_id, position, created_at) VALUES (?, ?, ?, ?, ?)'
         );
         $stmt->execute([$trackId, $source, $requestId, $nextPos, Util::now()]);
         return (int) $pdo->lastInsertId();
+    }
+
+    /**
+     * Index (in der aktuellen Abspielreihenfolge), an dem ein Gastwunsch
+     * einsortiert werden soll: hinter Index 0 (dem gerade laufenden bzw. als
+     * naechstes anstehenden Track - der bleibt unangetastet vorn) und hinter
+     * bereits wartenden Gast-/manuellen Eintraegen, aber VOR dem ersten
+     * Auto-DJ-Eintrag. Kein Auto-DJ-Eintrag vorhanden -> ans Ende.
+     */
+    private function priorityInsertIndex(): int
+    {
+        $items = $this->all();
+        foreach ($items as $i => $item) {
+            if ($i === 0) {
+                continue;
+            }
+            if ($item['source'] === self::SOURCE_AUTO) {
+                return $i;
+            }
+        }
+        return count($items);
+    }
+
+    /** Fuegt einen neuen Track an einem bestimmten Index der Reihenfolge ein und nummeriert die Positionen neu durch. */
+    private function insertAtIndex(int $trackId, string $source, ?int $requestId, int $index): int
+    {
+        $pdo = Database::get();
+        $ids = array_column($this->all(), 'id');
+
+        $stmt = $pdo->prepare(
+            'INSERT INTO playlist (track_id, source, request_id, position, created_at) VALUES (?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([$trackId, $source, $requestId, count($ids), Util::now()]);
+        $newId = (int) $pdo->lastInsertId();
+
+        array_splice($ids, $index, 0, [$newId]);
+        $this->reorder($ids);
+        return $newId;
     }
 
     /** Schreibt eine neue Reihenfolge fest (Drag&Drop im Player) - $orderedIds sind Playlist-IDs. */
@@ -124,18 +172,28 @@ final class PlaylistRepository
 
     /**
      * Fuellt die Playlist auf, falls sie unter $minCount Eintraege hat: fuegt
-     * dann $addCount noch nicht (oder am laengsten nicht mehr) gespielte
-     * Tracks aus der Bibliothek hinzu, die noch nicht in der Playlist stehen.
-     * Vermeidet dabei nach Moeglichkeit, denselben Kuenstler direkt zu
-     * wiederholen (weiche Praeferenz - siehe pickCandidate()).
+     * noch nicht (oder am laengsten nicht mehr) gespielte Tracks aus der
+     * Bibliothek hinzu, bis $targetCount erreicht ist. Vermeidet dabei nach
+     * Moeglichkeit, denselben Kuenstler direkt zu wiederholen (weiche
+     * Praeferenz - siehe pickCandidate()).
+     *
+     * Garantiert das Auffuellen bis $targetCount, sofern die Bibliothek
+     * ueberhaupt genug Tracks enthaelt, die nicht schon in der Playlist
+     * stehen: reicht die Sperrfrist-taugliche Auswahl nicht aus (z.B. weil
+     * eine kleine Bibliothek durchgespielt wurde), wird als letzter Ausweg
+     * auch ein eigentlich noch gesperrter Track gewaehlt (der am laengsten
+     * nicht gespielte zuerst) - eine leere/zu kurze Playlist waere schlimmer
+     * als eine faellige Wiederholung.
      *
      * @return int Anzahl tatsaechlich hinzugefuegter Tracks
      */
-    public function topUp(int $minCount = 3, int $addCount = 2): int
+    public function topUp(int $minCount = 3, int $targetCount = 5): int
     {
-        if ($this->count() >= $minCount) {
+        $current = $this->count();
+        if ($current >= $minCount) {
             return 0;
         }
+        $addCount = $targetCount - $current;
 
         $pdo = Database::get();
         $playlistItems = $this->all();
@@ -169,6 +227,13 @@ final class PlaylistRepository
                 $candidate = $this->pickCandidate($pdo, $excludeIds, $cutoff, null);
             }
             if (!$candidate) {
+                // Letzter Ausweg: Sperrfrist ignorieren, sonst bliebe die
+                // Playlist unter $minCount haengen (z.B. kleine Bibliothek
+                // komplett "verbraucht"). Waehlt trotzdem den am laengsten
+                // nicht gespielten/entfernten Track zuerst.
+                $candidate = $this->pickCandidate($pdo, $excludeIds, null, null);
+            }
+            if (!$candidate) {
                 break;
             }
 
@@ -180,8 +245,9 @@ final class PlaylistRepository
         return count($addedIds);
     }
 
-    /** Waehlt den naechsten Auto-DJ-Kandidaten aus (am laengsten nicht gespielt), optional ohne $avoidArtist. */
-    private function pickCandidate(\PDO $pdo, array $excludeIds, string $cutoff, ?string $avoidArtist): ?array
+    /** Waehlt den naechsten Auto-DJ-Kandidaten aus (am laengsten nicht gespielt), optional ohne $avoidArtist.
+     * $cutoff === null ignoriert die Sperrfrist komplett (letzter Ausweg, siehe topUp()). */
+    private function pickCandidate(\PDO $pdo, array $excludeIds, ?string $cutoff, ?string $avoidArtist): ?array
     {
         $conditions = [];
         $params = [];
@@ -189,19 +255,21 @@ final class PlaylistRepository
             $conditions[] = 'id NOT IN (' . implode(',', array_fill(0, count($excludeIds), '?')) . ')';
             $params = array_merge($params, $excludeIds);
         }
-        $conditions[] = '(last_played_at IS NULL OR last_played_at <= ? OR (lock_released_at IS NOT NULL AND lock_released_at > last_played_at))';
-        $params[] = $cutoff;
-        // Gerade erst vom Admin aus der Playlist entfernte Tracks sollen der
-        // gleichen Sperrfrist unterliegen wie kuerzlich gespielte - sonst
-        // waehlt der Auto-DJ genau den Track sofort wieder aus (Bug-Report).
-        $conditions[] = '(removed_at IS NULL OR removed_at <= ? OR (lock_released_at IS NOT NULL AND lock_released_at > removed_at))';
-        $params[] = $cutoff;
+        if ($cutoff !== null) {
+            $conditions[] = '(last_played_at IS NULL OR last_played_at <= ? OR (lock_released_at IS NOT NULL AND lock_released_at > last_played_at))';
+            $params[] = $cutoff;
+            // Gerade erst vom Admin aus der Playlist entfernte Tracks sollen der
+            // gleichen Sperrfrist unterliegen wie kuerzlich gespielte - sonst
+            // waehlt der Auto-DJ genau den Track sofort wieder aus (Bug-Report).
+            $conditions[] = '(removed_at IS NULL OR removed_at <= ? OR (lock_released_at IS NOT NULL AND lock_released_at > removed_at))';
+            $params[] = $cutoff;
+        }
         if ($avoidArtist !== null) {
             $conditions[] = '(artist IS NULL OR artist <> ?)';
             $params[] = $avoidArtist;
         }
 
-        $where = 'WHERE ' . implode(' AND ', $conditions);
+        $where = $conditions ? ('WHERE ' . implode(' AND ', $conditions)) : '';
         // NULL (noch nie gespielt) sortiert in SQLite/MySQL vor jedem Datum,
         // damit landen unangespielte Tracks automatisch zuerst.
         $sql = "SELECT id, artist FROM tracks {$where} ORDER BY last_played_at ASC LIMIT 1";

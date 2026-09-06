@@ -4,6 +4,7 @@ require __DIR__ . '/../bootstrap.php';
 
 use App\Auth;
 use App\Csrf;
+use App\Database;
 use App\GuestIdentity;
 use App\Repositories\GuestProfileRepository;
 use App\Repositories\PlaylistRepository;
@@ -176,6 +177,17 @@ if ($method === 'POST') {
             json_fail(409, 'Dieser Track wurde kürzlich gespielt und ist noch gesperrt.');
         }
 
+        // Kontingent-Pruefung + Anlage in einer Transaktion: sonst koennten
+        // zwei parallele Requests desselben Gasts (oder derselben IP) beide
+        // denselben "noch nicht ausgeschoepft"-Stand lesen und das Limit
+        // gemeinsam ueberschreiten, bevor die erste INSERT committet ist
+        // (TOCTOU). BEGIN IMMEDIATE erzwingt bei SQLite sofort den
+        // Schreib-Lock, statt ihn erst bei der ersten Schreiboperation zu
+        // holen - genau das schliesst die Luecke.
+        $pdo = Database::get();
+        $isMysql = Database::driver() === 'mysql';
+        $isMysql ? $pdo->beginTransaction() : $pdo->exec('BEGIN IMMEDIATE');
+
         // Grobe, feste IP-Bremse als zusaetzliches Sicherheitsnetz (z.B. falls
         // jemand das Cookie loescht) - das eigentliche, einstellbare Limit
         // laeuft ueber das Gast-Cookie weiter unten.
@@ -206,6 +218,8 @@ if ($method === 'POST') {
         } else {
             $id = $repo->create($trackId, $guestName, $guestToken);
         }
+
+        $isMysql ? $pdo->commit() : $pdo->exec('COMMIT');
 
         $limitInfo = guestLimitInfo($guestToken, $repo, $settings);
         echo json_encode(array_merge(['ok' => true, 'id' => $id, 'auto_dj' => $autoDj], $limitInfo));

@@ -11,10 +11,17 @@ use App\Repositories\UserRepository;
  */
 final class Auth
 {
+    // Dummy-Hash fuer einen konstanten password_verify()-Aufruf auch bei
+    // unbekanntem Benutzernamen - sonst waere per Timing (kein Hash-Vergleich
+    // vs. echter bcrypt-Vergleich) erkennbar, welche Benutzernamen existieren.
+    private const DUMMY_HASH = '$2y$10$abcdefghijklmnopqrstuuVGXjE0N4h1v6Z5f2z8W1p1e1c1s1e1s.a';
+
     public static function attempt(string $username, string $password): bool
     {
         $user = (new UserRepository())->findByUsername($username);
-        if (!$user || !password_verify($password, $user['password_hash'])) {
+        $hash = $user['password_hash'] ?? self::DUMMY_HASH;
+        $valid = password_verify($password, $hash);
+        if (!$user || !$valid) {
             return false;
         }
         session_regenerate_id(true);

@@ -25,8 +25,12 @@ if (!$library) {
 
 $root = realpath($library['path']);
 $fullPath = $root !== false ? realpath($root . '/' . $track['relpath']) : false;
+// str_starts_with($fullPath, $root) allein wuerde z.B. "/data/music-2" faelschlich
+// als "innerhalb von" "/data/music" durchgehen (kein Trenner an der Grenze) -
+// mit Trailing-Slash auf beiden Seiten vergleichen schliesst das aus.
+$inside = $fullPath !== false && $root !== false && ($fullPath === $root || str_starts_with($fullPath, rtrim($root, '/\\') . DIRECTORY_SEPARATOR));
 
-if ($root === false || $fullPath === false || !str_starts_with($fullPath, $root) || !is_file($fullPath)) {
+if ($root === false || $fullPath === false || !$inside || !is_file($fullPath)) {
     http_response_code(404);
     exit('Datei nicht gefunden.');
 }

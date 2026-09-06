@@ -21,7 +21,7 @@ final class Database
      * hoehere Code-Version, schickt einen angemeldeten Admin automatisch zu
      * install.php und die Migration laeuft dort erst nach einem Klick.
      */
-    public const SCHEMA_VERSION = 5;
+    public const SCHEMA_VERSION = 6;
 
     public static function get(): \PDO
     {
@@ -124,6 +124,7 @@ final class Database
         self::ensureColumn($pdo, $driver, 'tracks', 'cover_ext', $driver === 'mysql' ? 'VARCHAR(8) NULL' : 'TEXT');
         self::ensureColumn($pdo, $driver, 'tracks', 'lock_released_at', $driver === 'mysql' ? 'DATETIME NULL' : 'TEXT');
         self::ensureColumn($pdo, $driver, 'tracks', 'removed_at', $driver === 'mysql' ? 'DATETIME NULL' : 'TEXT');
+        self::ensureColumn($pdo, $driver, 'track_reactions', 'ip_hash', $driver === 'mysql' ? 'VARCHAR(64) NULL' : 'TEXT');
 
         self::runStatements($pdo, [
             $driver === 'mysql'
@@ -338,6 +339,21 @@ final class Database
         $statements[] = $isMysql
             ? "CREATE INDEX idx_track_reactions_track_created ON track_reactions (track_id, created_at)"
             : "CREATE INDEX IF NOT EXISTS idx_track_reactions_track_created ON track_reactions (track_id, created_at)";
+
+        // IP-basierte Bremse gegen Brute-Force auf login.php und die
+        // Admin-Konto-Anlage in install.php Stufe 2 (siehe src/LoginThrottle.php).
+        // Bewusst IP- statt session-/cookie-basiert, da vor einem
+        // erfolgreichen Login keine vertrauenswuerdige Session existiert.
+        $statements[] = "CREATE TABLE IF NOT EXISTS login_throttle (
+            ip_hash {$varchar32} NOT NULL,
+            scope {$varchar32} NOT NULL DEFAULT 'login',
+            attempts {$int} NOT NULL DEFAULT 0,
+            blocked_until {$datetime},
+            updated_at {$datetimeNotNull}
+        ){$engine}";
+        $statements[] = $isMysql
+            ? "CREATE UNIQUE INDEX idx_login_throttle_ip_scope ON login_throttle (ip_hash, scope)"
+            : "CREATE UNIQUE INDEX IF NOT EXISTS idx_login_throttle_ip_scope ON login_throttle (ip_hash, scope)";
 
         return $statements;
     }

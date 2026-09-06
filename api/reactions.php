@@ -46,5 +46,5 @@ if (!(new TrackRepository())->findById($trackId)) {
 }
 
 $repo = new TrackReactionRepository();
-$repo->add($trackId, GuestIdentity::id());
-echo json_encode(['ok' => true, 'count' => $repo->countForTrack($trackId)]);
+$added = $repo->add($trackId, GuestIdentity::id());
+echo json_encode(['ok' => $added, 'count' => $repo->countForTrack($trackId)]);

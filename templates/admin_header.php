@@ -4,6 +4,7 @@
  * $activeNav eines von: dashboard, library, requests, users, settings, player
  */
 use App\Auth;
+use App\Csrf;
 use App\Repositories\PlaylistRepository;
 use App\Repositories\SettingRepository;
 
@@ -87,7 +88,10 @@ if (!function_exists('nav_item')) {
       <button class="pnk-btn pnk-btn--ghost pnk-btn--icon" id="theme-toggle" type="button" title="Theme wechseln" aria-label="Theme wechseln">🌙</button>
       <?php if (Auth::isLoggedIn()): ?>
         <span class="pnk-text-muted app-topbar-user" style="font-size:13px;"><?= htmlspecialchars(Auth::username() ?? '', ENT_QUOTES) ?></span>
-        <a class="pnk-btn pnk-btn--ghost pnk-btn--sm" href="<?= app_url('logout.php') ?>">Abmelden</a>
+        <form method="post" action="<?= app_url('logout.php') ?>" style="display:inline;">
+          <?= Csrf::field() ?>
+          <button class="pnk-btn pnk-btn--ghost pnk-btn--sm" type="submit">Abmelden</button>
+        </form>
       <?php endif; ?>
     </div>
   </header>
@@ -148,7 +152,7 @@ if (!function_exists('nav_item')) {
 
     <?php if (Auth::isLoggedIn()): ?>
     <div class="app-sidebar-bottom">
-      <button class="app-nav-btn app-live-toggle-btn <?= $appLive ? 'is-live' : 'is-offline' ?>" id="btn-live-toggle" type="button" title="<?= $appLive ? 'Party beenden (offline gehen) - setzt Gäste-/Wunschdaten zurück' : 'Party starten (live gehen) - setzt Gäste-/Wunschdaten zurück' ?>">
+      <button class="pnk-nav-item app-nav-btn app-live-toggle-btn <?= $appLive ? 'is-live' : 'is-offline' ?>" id="btn-live-toggle" type="button" title="<?= $appLive ? 'Party beenden (offline gehen) - setzt Gäste-/Wunschdaten zurück' : 'Party starten (live gehen) - setzt Gäste-/Wunschdaten zurück' ?>">
         <span class="app-live-toggle-dot" aria-hidden="true"></span>
         <span class="app-nav-label"><?= $appLive ? 'ON AIR' : 'OFFLINE' ?></span>
       </button>
