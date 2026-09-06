@@ -11,28 +11,39 @@ use App\Repositories\SettingRepository;
 GuestIdentity::id();
 
 $settings = new SettingRepository();
-$appName = $settings->get('app_name', 'Party Player - pan1k.de');
 $pageTitle = 'Musikwunsch';
 $csrfToken = Csrf::token();
+$previewSeconds = (int) $settings->get('preview_seconds', '20');
 
 require __DIR__ . '/templates/public_header.php';
 ?>
-<script>window.APP_CSRF = <?= json_encode($csrfToken) ?>; window.APP_BASE = <?= json_encode(app_url('')) ?>;</script>
+<script>
+  window.APP_CSRF = <?= json_encode($csrfToken) ?>;
+  window.APP_BASE = <?= json_encode(app_url('')) ?>;
+  window.APP_PREVIEW_SECONDS = <?= (int) $previewSeconds ?>;
+</script>
 
-<h1><?= htmlspecialchars($appName, ENT_QUOTES) ?> 🎶</h1>
+<div class="app-ticker" id="now-playing-ticker" hidden><span class="app-ticker__text" id="now-playing-text"></span></div>
 <p class="lede">Song gesucht? Einfach suchen und wünschen – der DJ sieht deinen Wunsch sofort.</p>
 
-<div class="pnk-card" style="margin-bottom:16px;">
+<div class="pnk-card" id="name-card" style="margin-bottom:16px;">
   <label class="pnk-label" for="guest-name">Dein Name</label>
-  <input class="pnk-input" type="text" id="guest-name" placeholder="z.B. Alex" maxlength="60" required style="margin-bottom:12px;">
+  <div style="display:flex; gap:8px;">
+    <input class="pnk-input" type="text" id="guest-name" placeholder="z.B. Alex" maxlength="60" required style="flex:1;">
+    <button class="pnk-btn pnk-btn--primary" id="btn-confirm-name" type="button">Weiter</button>
+  </div>
+</div>
 
+<div id="guest-greeting" class="pnk-text-muted" style="margin-bottom:16px;" hidden></div>
+
+<div class="pnk-card" id="search-card" style="margin-bottom:16px;" hidden>
   <label class="pnk-label" for="search-input">Song suchen</label>
-  <input class="pnk-input pnk-search" type="text" id="search-input" placeholder="Titel, Interpret oder Album…" autofocus>
+  <input class="pnk-input pnk-search" type="text" id="search-input" placeholder="Titel, Interpret, Album oder Jahr…">
 </div>
 
 <div id="feedback"></div>
 
-<div class="pnk-card" id="results-card" style="margin-bottom:16px;">
+<div class="pnk-card" id="results-card" style="margin-bottom:16px;" hidden>
   <div class="pnk-card__header"><span class="pnk-card__title" id="results-title">Inspiration</span></div>
   <div id="results-list"></div>
 </div>
@@ -41,5 +52,7 @@ require __DIR__ . '/templates/public_header.php';
   <div class="pnk-card__header"><span class="pnk-card__title">Aktuelle Wunschliste</span></div>
   <div id="queue-list"><div class="app-empty">Lade…</div></div>
 </div>
+
+<audio id="preview-audio" hidden></audio>
 
 <?php require __DIR__ . '/templates/public_footer.php'; ?>

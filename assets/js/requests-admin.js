@@ -4,8 +4,19 @@
   var BASE = window.APP_BASE || '/';
   var CSRF = window.APP_CSRF || '';
   var listEl = document.getElementById('requests-list');
+  var requestsCard = document.getElementById('requests-card');
+  var guestsCard = document.getElementById('guests-card');
+  var guestsList = document.getElementById('guests-list');
   var tabs = document.querySelectorAll('#status-tabs .pnk-tab');
   var currentStatus = 'pending';
+
+  function formatDuration(sec) {
+    if (sec === null || sec === undefined || isNaN(sec) || sec < 0) return '--:--';
+    sec = Math.floor(sec);
+    var m = Math.floor(sec / 60);
+    var s = sec % 60;
+    return m + ':' + (s < 10 ? '0' : '') + s;
+  }
 
   function api(path) { return BASE + path; }
 
@@ -75,18 +86,55 @@
       .then(function (j) { render(j.requests || []); });
   }
 
+  function renderGuests(guests) {
+    if (!guests.length) {
+      guestsList.innerHTML = '<div class="app-empty">Noch keine Gäste-Wünsche in diesem Zeitfenster.</div>';
+      return;
+    }
+    var html = '<table class="pnk-table"><thead><tr><th>Name</th><th>Verbleibend</th><th>Reset in</th><th></th></tr></thead><tbody>';
+    guests.forEach(function (g) {
+      html += '<tr data-token="' + escapeHtml(g.guest_token) + '">' +
+        '<td>' + escapeHtml(g.name) + '</td>' +
+        '<td>' + (g.remaining === null ? 'unbegrenzt' : g.remaining) + '</td>' +
+        '<td class="app-guest-reset-countdown" data-seconds="' + g.wait_seconds + '">' + formatDuration(g.wait_seconds) + '</td>' +
+        '<td style="text-align:right;"><button class="pnk-btn pnk-btn--ghost pnk-btn--sm btn-reset-guest" data-token="' + escapeHtml(g.guest_token) + '">Zurücksetzen</button></td>' +
+      '</tr>';
+    });
+    html += '</tbody></table>';
+    guestsList.innerHTML = html;
+    guestsList.querySelectorAll('.btn-reset-guest').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        btn.disabled = true;
+        postJson(api('api/requests.php'), { action: 'reset_guest_limit', guest_token: btn.getAttribute('data-token'), csrf_token: CSRF })
+          .then(loadGuests);
+      });
+    });
+  }
+
+  function loadGuests() {
+    fetch(api('api/requests.php?status=guests'))
+      .then(function (r) { return r.json(); })
+      .then(function (j) { renderGuests(j.guests || []); });
+  }
+
+  function refresh() {
+    if (currentStatus === 'guests') loadGuests(); else load();
+  }
+
   tabs.forEach(function (tab) {
     tab.addEventListener('click', function () {
       tabs.forEach(function (t) { t.classList.remove('is-active'); });
       tab.classList.add('is-active');
       currentStatus = tab.getAttribute('data-status');
-      load();
+      requestsCard.hidden = currentStatus === 'guests';
+      guestsCard.hidden = currentStatus !== 'guests';
+      refresh();
     });
   });
 
-  load();
+  refresh();
   // Interval fuer Aufraeumen bei Soft-Navigation registrieren (siehe app.js),
   // sonst wuerde bei jedem erneuten Besuch dieser Seite ein weiterer,
   // nie endender Abfrage-Intervall dazukommen.
-  (window.APP_PAGE_TIMERS = window.APP_PAGE_TIMERS || []).push(setInterval(load, 10000));
+  (window.APP_PAGE_TIMERS = window.APP_PAGE_TIMERS || []).push(setInterval(refresh, 10000));
 })();

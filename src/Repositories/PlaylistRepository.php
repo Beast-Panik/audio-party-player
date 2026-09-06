@@ -60,31 +60,6 @@ final class PlaylistRepository
         return (int) $pdo->lastInsertId();
     }
 
-    /**
-     * Stellt einen Track an den Anfang der Playlist (niedrigste Position) -
-     * fuer den "Jetzt spielen"-Fall (Bibliothek/Playlist), damit ein manuell
-     * gestarteter Track sofort als "aktuell" in der Playlist auftaucht.
-     */
-    public function addAtFront(int $trackId, string $source = self::SOURCE_MANUAL): int
-    {
-        $pdo = Database::get();
-        $minPos = (int) $pdo->query('SELECT COALESCE(MIN(position), 0) AS p FROM playlist')->fetch()['p'];
-
-        $stmt = $pdo->prepare('SELECT id FROM playlist WHERE track_id = ? LIMIT 1');
-        $stmt->execute([$trackId]);
-        $existing = $stmt->fetch();
-        if ($existing) {
-            $pdo->prepare('UPDATE playlist SET position = ? WHERE id = ?')->execute([$minPos - 1, $existing['id']]);
-            return (int) $existing['id'];
-        }
-
-        $stmt = $pdo->prepare(
-            'INSERT INTO playlist (track_id, source, request_id, position, created_at) VALUES (?, ?, NULL, ?, ?)'
-        );
-        $stmt->execute([$trackId, $source, $minPos - 1, Util::now()]);
-        return (int) $pdo->lastInsertId();
-    }
-
     /** Schreibt eine neue Reihenfolge fest (Drag&Drop im Player) - $orderedIds sind Playlist-IDs. */
     public function reorder(array $orderedIds): void
     {
@@ -128,16 +103,26 @@ final class PlaylistRepository
 
         $pdo = Database::get();
         $existingIds = array_column($this->all(), 'track_id');
-        $placeholders = '';
+        $conditions = [];
         $params = [];
         if (!empty($existingIds)) {
-            $placeholders = 'WHERE id NOT IN (' . implode(',', array_fill(0, count($existingIds), '?')) . ')';
+            $conditions[] = 'id NOT IN (' . implode(',', array_fill(0, count($existingIds), '?')) . ')';
             $params = $existingIds;
         }
 
+        // Kuerzlich gespielte Tracks (Sperrfrist, Setting recent_played_lock_hours)
+        // stehen dem Auto-DJ nicht zur Verfuegung, ausser der Admin hat sie
+        // ueber "Kuerzlich gespielt" vorzeitig freigegeben.
+        $lockHours = (int) (new SettingRepository())->get('recent_played_lock_hours', '4');
+        $cutoff = date('Y-m-d H:i:s', time() - $lockHours * 3600);
+        $conditions[] = '(last_played_at IS NULL OR last_played_at <= ? OR (lock_released_at IS NOT NULL AND lock_released_at > last_played_at))';
+        $params[] = $cutoff;
+
+        $where = 'WHERE ' . implode(' AND ', $conditions);
+
         // NULL (noch nie gespielt) sortiert in SQLite/MySQL vor jedem Datum,
         // damit landen unangespielte Tracks automatisch zuerst.
-        $sql = "SELECT id FROM tracks {$placeholders} ORDER BY last_played_at ASC LIMIT ?";
+        $sql = "SELECT id FROM tracks {$where} ORDER BY last_played_at ASC LIMIT ?";
         $params[] = $addCount;
         $stmt = $pdo->prepare($sql);
         foreach ($params as $i => $p) {

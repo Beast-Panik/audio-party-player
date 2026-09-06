@@ -9,6 +9,10 @@ data/database.sqlite-wal
 # Scan-Zwischenstand
 data/scanstate/*.json
 
+# Extrahierte Cover-Art (wird bei jedem Scan neu erzeugt)
+data/covers/*.jpg
+data/covers/*.png
+
 # OS/Editor
 .DS_Store
 Thumbs.db

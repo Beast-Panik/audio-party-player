@@ -36,6 +36,7 @@ final class Id3Reader
             'title' => null, 'artist' => null, 'album' => null, 'album_artist' => null,
             'genre' => null, 'track_no' => null, 'disc_no' => null, 'year' => null,
             'duration_seconds' => null, 'bitrate' => null,
+            'cover_mime' => null, 'cover_data' => null,
         ];
 
         $fh = fopen($path, 'rb');
@@ -135,6 +136,8 @@ final class Id3Reader
 
             if ($frameId[0] === 'T') {
                 $tags[$frameId] = self::decodeTextFrame($frameData);
+            } elseif ($frameId === 'APIC') {
+                self::rememberCover($tags, self::decodeApicFrame($frameData));
             }
         }
         return $tags;
@@ -162,9 +165,81 @@ final class Id3Reader
             $pos += $frameSize;
             if (isset($map[$frameId])) {
                 $tags[$map[$frameId]] = self::decodeTextFrame($frameData);
+            } elseif ($frameId === 'PIC') {
+                self::rememberCover($tags, self::decodePicFrame($frameData));
             }
         }
         return $tags;
+    }
+
+    /** Front-Cover (Type 3) hat Vorrang, sonst gilt das zuerst gefundene Bild. */
+    private static function rememberCover(array &$tags, ?array $pic): void
+    {
+        if ($pic === null) {
+            return;
+        }
+        if (!isset($tags['__cover']) || ($pic['type'] === 3 && $tags['__cover']['type'] !== 3)) {
+            $tags['__cover'] = $pic;
+        }
+    }
+
+    /** APIC-Frame (ID3v2.3/2.4): Encoding-Byte, MIME-String, Picture-Type, Beschreibung, Bilddaten. */
+    private static function decodeApicFrame(string $data): ?array
+    {
+        if (strlen($data) < 4) {
+            return null;
+        }
+        $encByte = ord($data[0]);
+        $nullPos = strpos($data, "\0", 1);
+        if ($nullPos === false) {
+            return null;
+        }
+        $mime = strtolower(trim(substr($data, 1, $nullPos - 1)));
+        $pos = $nullPos + 1;
+        if ($mime === '' || $mime === '-->' || $pos >= strlen($data)) {
+            return null; // "-->" = Link statt eingebettetem Bild
+        }
+        $pictureType = ord($data[$pos]);
+        $descEnd = self::findFrameStringEnd($data, $pos + 1, $encByte);
+        if ($descEnd === false) {
+            return null;
+        }
+        $imageData = substr($data, $descEnd);
+        return $imageData !== '' ? ['mime' => $mime, 'data' => $imageData, 'type' => $pictureType] : null;
+    }
+
+    /** PIC-Frame (ID3v2.2): Encoding-Byte, 3-Zeichen-Bildformat, Picture-Type, Beschreibung, Bilddaten. */
+    private static function decodePicFrame(string $data): ?array
+    {
+        if (strlen($data) < 6) {
+            return null;
+        }
+        $encByte = ord($data[0]);
+        $format = strtoupper(substr($data, 1, 3));
+        $pictureType = ord($data[4]);
+        $descEnd = self::findFrameStringEnd($data, 5, $encByte);
+        if ($descEnd === false) {
+            return null;
+        }
+        $imageData = substr($data, $descEnd);
+        $mime = ['JPG' => 'image/jpeg', 'PNG' => 'image/png'][$format] ?? null;
+        return ($mime !== null && $imageData !== '') ? ['mime' => $mime, 'data' => $imageData, 'type' => $pictureType] : null;
+    }
+
+    /** Position direkt nach dem (evtl. leeren) Beschreibungsstring ab $pos, abhaengig vom Encoding-Byte. */
+    private static function findFrameStringEnd(string $data, int $pos, int $encByte): int|false
+    {
+        $len = strlen($data);
+        if ($encByte === 1 || $encByte === 2) { // UTF-16 (mit/ohne BOM) -> \0\0-Terminierung
+            for ($i = $pos; $i + 1 < $len; $i += 2) {
+                if ($data[$i] === "\0" && $data[$i + 1] === "\0") {
+                    return $i + 2;
+                }
+            }
+            return false;
+        }
+        $nul = strpos($data, "\0", $pos); // ISO-8859-1/UTF-8 -> einzelnes \0
+        return $nul === false ? false : $nul + 1;
     }
 
     private static function decodeTextFrame(string $data): string
@@ -222,6 +297,10 @@ final class Id3Reader
         }
         if (!empty($tags['TCON'])) {
             $result['genre'] = self::resolveGenre($tags['TCON']);
+        }
+        if (!empty($tags['__cover'])) {
+            $result['cover_mime'] = $tags['__cover']['mime'];
+            $result['cover_data'] = $tags['__cover']['data'];
         }
         return $result;
     }

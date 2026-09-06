@@ -114,6 +114,13 @@ final class Scanner
         return $result;
     }
 
+    private static function coverDir(): string
+    {
+        return dirname(__DIR__) . '/data/covers';
+    }
+
+    private const COVER_MIME_EXT = ['image/jpeg' => 'jpg', 'image/jpg' => 'jpg', 'image/png' => 'png'];
+
     private static function scanOneFile(int $libraryId, string $fullpath, string $relpath, TrackRepository $repo): void
     {
         if (!is_file($fullpath)) {
@@ -131,6 +138,28 @@ final class Scanner
         $meta['mtime'] = filemtime($fullpath) ?: 0;
         $meta['codec'] = $ext;
 
-        $repo->upsert($libraryId, $relpath, $meta);
+        $coverExt = null;
+        $coverData = $meta['cover_data'] ?? null;
+        if ($coverData) {
+            $coverExt = self::COVER_MIME_EXT[strtolower((string) ($meta['cover_mime'] ?? ''))] ?? null;
+        }
+        $meta['cover_ext'] = $coverExt;
+        unset($meta['cover_mime'], $meta['cover_data']);
+
+        $existing = $repo->findByLibraryAndRelpath($libraryId, $relpath);
+        $trackId = $repo->upsert($libraryId, $relpath, $meta);
+
+        self::syncCoverFile($trackId, $existing['cover_ext'] ?? null, $coverExt, $coverData);
+    }
+
+    /** Schreibt/loescht die Cover-Datei passend zum aktuellen Scan-Ergebnis. */
+    private static function syncCoverFile(int $trackId, ?string $oldExt, ?string $newExt, ?string $newData): void
+    {
+        if ($oldExt !== null && $oldExt !== $newExt) {
+            @unlink(self::coverDir() . "/{$trackId}.{$oldExt}");
+        }
+        if ($newExt !== null && $newData !== null) {
+            file_put_contents(self::coverDir() . "/{$trackId}.{$newExt}", $newData);
+        }
     }
 }

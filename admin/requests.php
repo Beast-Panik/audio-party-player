@@ -20,10 +20,19 @@ require __DIR__ . '/../templates/admin_header.php';
   <div class="pnk-tab" data-status="played">Gespielt</div>
   <div class="pnk-tab" data-status="rejected">Abgelehnt</div>
   <div class="pnk-tab" data-status="">Alle</div>
+  <div class="pnk-tab" data-status="guests">Gäste</div>
 </div>
 
-<div class="pnk-card">
+<div class="pnk-card" id="requests-card">
   <div id="requests-list"><div class="app-empty">Lade…</div></div>
+</div>
+
+<div class="pnk-card" id="guests-card" hidden>
+  <p class="pnk-text-muted" style="font-size:12.5px; margin:0 0 12px;">
+    Gäste, die sich in der aktuellen Zeitspanne Songs gewünscht haben, mit verbleibendem Kontingent
+    und Reset-Countdown. Über "Zurücksetzen" kann das Kontingent einer Person vorzeitig erneuert werden.
+  </p>
+  <div id="guests-list"><div class="app-empty">Lade…</div></div>
 </div>
 
 <script>window.APP_CSRF = <?= json_encode(Csrf::token()) ?>; window.APP_BASE = <?= json_encode(app_url('')) ?>;</script>

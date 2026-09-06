@@ -62,4 +62,20 @@ require __DIR__ . '/templates/admin_header.php';
   <div class="app-track-list" id="track-list"><div class="app-empty">Lade Bibliothek…</div></div>
 </div>
 
+<details class="pnk-card app-accordion" style="margin-bottom:20px;">
+  <summary class="pnk-card__header">
+    <span class="pnk-card__title app-accordion__title">
+      <span aria-hidden="true">🕒</span> Kürzlich gespielt
+    </span>
+    <span class="app-accordion__chevron" aria-hidden="true">▸</span>
+  </summary>
+  <div class="app-accordion__body">
+    <p class="pnk-text-muted" style="font-size:12.5px; margin:0 0 10px;">
+      Diese Tracks wurden vor Kurzem gespielt und sind fuer Gastwuensche und den Auto-DJ
+      vorübergehend gesperrt. Ueber "Freigeben" kann die Sperre pro Track vorzeitig aufgehoben werden.
+    </p>
+    <div id="recently-played-list"><div class="app-empty">Lade…</div></div>
+  </div>
+</details>
+
 <?php require __DIR__ . '/templates/admin_footer.php'; ?>

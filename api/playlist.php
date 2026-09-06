@@ -69,16 +69,6 @@ if ($method === 'POST') {
         exit;
     }
 
-    if ($action === 'play_now') {
-        $trackId = (int) ($input['track_id'] ?? 0);
-        if (!(new TrackRepository())->findById($trackId)) {
-            json_fail(404, 'Song nicht gefunden.');
-        }
-        $id = $playlist->addAtFront($trackId, PlaylistRepository::SOURCE_MANUAL);
-        echo json_encode(['ok' => true, 'id' => $id]);
-        exit;
-    }
-
     if ($action === 'remove') {
         $playlist->remove((int) ($input['id'] ?? 0));
         echo json_encode(['ok' => true]);
@@ -103,6 +93,28 @@ if ($method === 'POST') {
         if ($settings->get('auto_dj_enabled', '0') === '1') {
             $playlist->topUp();
         }
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
+    if ($action === 'set_now_playing') {
+        // Wird vom Player bei jedem Trackwechsel gemeldet, damit die
+        // Gaeste-Wunschseite den aktuell laufenden Track im Ticker anzeigen
+        // kann (siehe api/now_playing.php).
+        $settings->set('now_playing_title', (string) ($input['title'] ?? ''));
+        $settings->set('now_playing_artist', (string) ($input['artist'] ?? ''));
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
+    if ($action === 'release_lock') {
+        // Admin gibt einen kuerzlich gespielten Track vorzeitig wieder fuer
+        // Gastwuensche/Auto-DJ frei (siehe "Kuerzlich gespielt"-Liste).
+        $trackId = (int) ($input['track_id'] ?? 0);
+        if (!(new TrackRepository())->findById($trackId)) {
+            json_fail(404, 'Song nicht gefunden.');
+        }
+        (new TrackRepository())->releaseLock($trackId);
         echo json_encode(['ok' => true]);
         exit;
     }

@@ -57,7 +57,7 @@
 }
 .app-track-row {
   display: grid;
-  grid-template-columns: 1fr 1fr 90px 90px;
+  grid-template-columns: 36px 1fr 1fr 50px 70px 90px;
   gap: var(--pnk-space-3);
   align-items: center;
   padding: 8px 12px;
@@ -65,6 +65,14 @@
 }
 .app-track-row:hover { background: var(--pnk-hover-bg); }
 .app-track-row.is-playing { background: var(--pnk-selected-bg); color: var(--pnk-selected-text); }
+.app-track-row__cover { width: 36px; height: 36px; }
+.app-track-row__cover img {
+  width: 36px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: var(--pnk-radius-sm);
+  display: block;
+}
 .app-track-row__title { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-track-row__sub { color: var(--pnk-text-muted); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .app-track-row.is-playing .app-track-row__sub { color: inherit; opacity: 0.85; }
@@ -275,7 +283,12 @@ html.app-sidebar-preload-collapsed .app-shell {
    deutlich kleiner als vorher in der breiten Topbar, damit er in die
    Sidebar-Breite passt. */
 .app-sidebar-countdown {
-  padding: 0 8px 8px;
+  /* Gleiche Breite/horizontales Padding wie .pnk-nav-item (Menue-Buttons) -
+     box-sizing+width sorgen dafuer, dass das unabhaengig vom umgebenden
+     Flex-Layout garantiert ist, statt sich nur "zufaellig" zu entsprechen. */
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0 10px 8px;
   text-align: center;
 }
 .app-sidebar-countdown[hidden] { display: none; }
@@ -597,9 +610,11 @@ html.app-sidebar-preload-collapsed .app-sidebar-countdown {
     grid-template-columns: 1fr 70px;
     grid-template-areas: "title actions" "sub actions";
   }
+  .app-track-row__cover { display: none; }
   .app-track-row__title { grid-area: title; }
-  .app-track-row__sub:nth-of-type(2) { grid-area: sub; }
-  .app-track-row__sub:nth-of-type(3) { display: none; }
+  .app-track-row__sub--meta { grid-area: sub; }
+  .app-track-row__sub--year,
+  .app-track-row__sub--duration { display: none; }
   .app-track-row__actions { grid-area: actions; flex-direction: column; }
 }
 
@@ -638,3 +653,52 @@ html.app-sidebar-preload-collapsed .app-sidebar-countdown {
   opacity: 0.6;
   transition: opacity 120ms ease;
 }
+
+/* Ticker auf der Gaeste-Wunschseite: zeigt den aktuell laufenden Track
+   anstelle des frueheren statischen App-Namens im Kopfbereich. */
+.app-ticker {
+  overflow: hidden;
+  white-space: nowrap;
+  margin-bottom: 16px;
+  font-weight: 600;
+}
+.app-ticker__text {
+  display: inline-block;
+  padding-left: 100%;
+  animation: app-ticker-scroll 16s linear infinite;
+}
+@keyframes app-ticker-scroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
+/* Such-Ergebnisliste auf der Gaeste-Wunschseite: kleines Cover + darauf
+   liegender Vorhoer-Button (20s-Ausschnitt aus der Mitte des Tracks). */
+.app-guest-result__cover {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+}
+.app-guest-result__cover img {
+  width: 44px;
+  height: 44px;
+  object-fit: cover;
+  border-radius: var(--pnk-radius-sm);
+  display: block;
+}
+.app-preview-play {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  border: none;
+  border-radius: var(--pnk-radius-sm);
+  cursor: pointer;
+  font-size: 16px;
+  padding: 0;
+}
+.app-preview-play:hover { background: rgba(0, 0, 0, 0.65); }

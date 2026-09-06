@@ -31,10 +31,29 @@ final class RequestRepository
         return (int) $stmt->fetch()['c'];
     }
 
+    /**
+     * Effektiver Fensterbeginn fuer das Gast-Kontingent: normalerweise
+     * "jetzt minus $minutes", aber wenn der Admin das Kontingent dieses
+     * Gasts manuell zurueckgesetzt hat, gilt stattdessen dessen (spaeterer)
+     * Reset-Zeitpunkt - dadurch zaehlen aeltere Wuensche vor dem Reset
+     * nicht mehr mit, ohne dass ihre requests-Zeilen geloescht werden.
+     */
+    private function effectiveSince(string $guestToken, int $minutes): string
+    {
+        $since = date('Y-m-d H:i:s', time() - $minutes * 60);
+        $stmt = Database::get()->prepare('SELECT reset_at FROM guest_limit_resets WHERE guest_token = ?');
+        $stmt->execute([$guestToken]);
+        $row = $stmt->fetch();
+        if ($row && $row['reset_at'] > $since) {
+            return $row['reset_at'];
+        }
+        return $since;
+    }
+
     /** Anzahl Wuensche der letzten $minutes Minuten von diesem Gast-Cookie (fuer das einstellbare Limit). */
     public function countRecentByGuestToken(string $guestToken, int $minutes): int
     {
-        $since = date('Y-m-d H:i:s', time() - $minutes * 60);
+        $since = $this->effectiveSince($guestToken, $minutes);
         $stmt = Database::get()->prepare('SELECT COUNT(*) AS c FROM requests WHERE guest_token = ? AND created_at >= ?');
         $stmt->execute([$guestToken, $since]);
         return (int) $stmt->fetch()['c'];
@@ -43,13 +62,72 @@ final class RequestRepository
     /** Zeitpunkt des aeltesten noch "zaehlenden" Wunsches - daraus laesst sich die Restwartezeit berechnen. */
     public function oldestRecentByGuestToken(string $guestToken, int $minutes): ?string
     {
-        $since = date('Y-m-d H:i:s', time() - $minutes * 60);
+        $since = $this->effectiveSince($guestToken, $minutes);
         $stmt = Database::get()->prepare(
             'SELECT created_at FROM requests WHERE guest_token = ? AND created_at >= ? ORDER BY created_at ASC LIMIT 1'
         );
         $stmt->execute([$guestToken, $since]);
         $row = $stmt->fetch();
         return $row ? $row['created_at'] : null;
+    }
+
+    /** Setzt/erneuert den manuellen Admin-Reset des Wunsch-Kontingents fuer einen Gast. */
+    public function setLimitReset(string $guestToken): void
+    {
+        $pdo = Database::get();
+        $now = Util::now();
+        if (Database::driver() === 'mysql') {
+            $pdo->prepare('INSERT INTO guest_limit_resets (guest_token, reset_at) VALUES (?, ?) ON DUPLICATE KEY UPDATE reset_at = VALUES(reset_at)')
+                ->execute([$guestToken, $now]);
+        } else {
+            $pdo->prepare('INSERT INTO guest_limit_resets (guest_token, reset_at) VALUES (?, ?) ON CONFLICT(guest_token) DO UPDATE SET reset_at = excluded.reset_at')
+                ->execute([$guestToken, $now]);
+        }
+    }
+
+    /**
+     * Zusammenfassung pro Gast (die den Wunsch-Limit-Cookie im Zeitfenster
+     * genutzt haben) fuer die Admin-Uebersicht: Name, Anzahl genutzter
+     * Wuensche und aeltester zaehlender Wunsch (fuer den Reset-Countdown).
+     */
+    public function listGuestsSummary(int $minutes): array
+    {
+        $since = date('Y-m-d H:i:s', time() - $minutes * 60);
+        $sql = "SELECT r.guest_token,
+                       gp.name AS locked_name,
+                       MAX(r.guest_name) AS last_guest_name,
+                       COUNT(*) AS used,
+                       MIN(r.created_at) AS oldest_created_at,
+                       MAX(r.created_at) AS last_active
+                FROM requests r
+                LEFT JOIN guest_limit_resets grl ON grl.guest_token = r.guest_token
+                LEFT JOIN guest_profiles gp ON gp.guest_token = r.guest_token
+                WHERE r.guest_token IS NOT NULL
+                  AND r.created_at >= CASE WHEN grl.reset_at IS NOT NULL AND grl.reset_at > ? THEN grl.reset_at ELSE ? END
+                GROUP BY r.guest_token, gp.name
+                ORDER BY last_active DESC";
+        $stmt = Database::get()->prepare($sql);
+        $stmt->execute([$since, $since]);
+        return $stmt->fetchAll();
+    }
+
+    /**
+     * Wuensche fuer die Gast-Ansicht: alle, die kuerzlich angelegt ODER
+     * kuerzlich im Status geaendert wurden (zeigt auch gespielte/abgelehnte
+     * Wuensche kurz an), aeltere fallen automatisch aus der Liste.
+     */
+    public function listRecentForGuestFeed(int $minutes = 60, int $limit = 100): array
+    {
+        $since = date('Y-m-d H:i:s', time() - $minutes * 60);
+        $sql = 'SELECT r.*, t.title, t.artist, t.album, t.duration_seconds
+                FROM requests r JOIN tracks t ON t.id = r.track_id
+                WHERE r.updated_at >= ?
+                ORDER BY r.created_at DESC LIMIT ?';
+        $stmt = Database::get()->prepare($sql);
+        $stmt->bindValue(1, $since);
+        $stmt->bindValue(2, $limit, \PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
     }
 
     public function listWithTracks(?string $status = null, int $limit = 200): array

@@ -97,6 +97,10 @@
     var crossfading = false;
     var playlistItems = [];
     var isDragging = false;
+    // Kleiner Verlauf der zuletzt gespielten Tracks, damit der "Zurueck"-
+    // Button per Crossfade zu einem echten vorherigen Track zurueckblenden
+    // kann (die Playlist selbst kennt nur "was kommt noch").
+    var playHistory = [];
 
     var titleEl = document.getElementById('np-title');
     var artistEl = document.getElementById('np-artist');
@@ -161,6 +165,14 @@
       return crossfadeEnabled && remaining !== null && remaining <= crossfadeSeconds;
     }
 
+    /** Fortschrittsbalken-Maximum + Restzeit-Anzeige auf den aktiven Track (neu) abstimmen. */
+    function syncDurationUI() {
+      if (!seek || !durEl) return;
+      seek.max = activeAudio.duration || 0;
+      durEl.textContent = '-' + formatDuration(activeAudio.duration);
+      durEl.classList.remove('is-ending-soon');
+    }
+
     function findCurrentIndex(items) {
       if (currentTrackId === null) return -1;
       for (var i = 0; i < items.length; i++) {
@@ -191,8 +203,21 @@
       try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
     }
 
+    /** Merkt sich den bisherigen aktuellen Track im Verlauf, bevor er ueberschrieben wird. */
+    function pushHistory() {
+      if (currentTrackId === null) return;
+      playHistory.push({ track_id: currentTrackId, title: titleEl.textContent, artist: artistEl.textContent });
+      if (playHistory.length > 10) playHistory.shift();
+    }
+
+    /** Meldet den aktuellen Track dem Server, damit der Ticker auf der Gaeste-Seite ihn anzeigen kann. */
+    function pushNowPlayingToServer(title, artist) {
+      postJson(api('api/playlist.php'), { action: 'set_now_playing', title: title || '', artist: artist || '', csrf_token: CSRF });
+    }
+
     /** Laedt einen Track in das aktive <audio>-Element und spielt ihn ab (kein Playlist-Seiteneffekt). */
     function loadAndPlay(trackId, title, artist) {
+      pushHistory();
       currentTrackId = trackId;
       activeAudio.src = streamUrl(trackId);
       activeAudio.currentTime = 0;
@@ -204,16 +229,8 @@
       highlightPlayingRow(trackId);
       updateTicker();
       saveNowPlaying();
+      pushNowPlayingToServer(title, artist);
     }
-
-    /** Admin spielt einen Bibliothek-/Playlist-Track sofort: stellt ihn an den Anfang der Playlist. */
-    function playTrack(track) {
-      postJson(api('api/playlist.php'), { action: 'play_now', track_id: track.id, csrf_token: CSRF }).then(function () {
-        loadAndPlay(track.id, track.title, track.artist);
-        setTimeout(refreshPlaylist, 250);
-      });
-    }
-    window.APP_PLAY_TRACK = playTrack; // fuer die Bibliotheks-Liste weiter unten
 
     function advanceOnServer(finishedTrackId) {
       if (finishedTrackId === null || finishedTrackId === undefined) return;
@@ -236,8 +253,10 @@
       setTimeout(refreshPlaylist, 250);
     }
 
-    /** Ueberblendet weich zum naechsten Playlist-Track statt hart zu schneiden. */
-    function beginCrossfade(next) {
+    /** Ueberblendet weich zum naechsten Playlist-Track statt hart zu schneiden.
+     * skipAdvance=true (Zurueck-Button): der bisherige Track gilt nicht als
+     * "durchgespielt" und bleibt unangetastet in der Playlist stehen. */
+    function beginCrossfade(next, skipAdvance) {
       crossfading = true;
       var finished = currentTrackId;
       var fadeMs = Math.max(500, crossfadeSeconds * 1000);
@@ -256,13 +275,14 @@
         if (t < 1) {
           requestAnimationFrame(tick);
         } else {
-          finishCrossfade(next, finished);
+          finishCrossfade(next, finished, skipAdvance);
         }
       }
       requestAnimationFrame(tick);
     }
 
-    function finishCrossfade(next, finishedTrackId) {
+    function finishCrossfade(next, finishedTrackId, skipAdvance) {
+      if (!skipAdvance) pushHistory();
       activeAudio.pause();
       activeAudio.currentTime = 0;
       var swap = activeAudio;
@@ -275,18 +295,31 @@
       highlightPlayingRow(next.track_id);
       updateTicker();
       saveNowPlaying();
-      advanceOnServer(finishedTrackId);
+      pushNowPlayingToServer(next.title, next.artist);
+      // standbyAudio hat "loadedmetadata" schon gefeuert, bevor es hier zu
+      // activeAudio wurde (Guard e.target===activeAudio hat das Update
+      // damals uebersprungen) - Fortschrittsbalken/Restzeit jetzt manuell
+      // auf den neuen (jetzt aktiven) Track synchronisieren.
+      syncDurationUI();
+      if (!skipAdvance) advanceOnServer(finishedTrackId);
       crossfading = false;
       setTimeout(refreshPlaylist, 250);
     }
 
     function maybeStartCrossfade() {
-      if (!crossfadeEnabled || crossfading || !activeAudio.duration || isNaN(activeAudio.duration)) return;
-      var remaining = activeAudio.duration - activeAudio.currentTime;
+      if (!crossfadeEnabled || crossfading || !isFinite(activeAudio.duration)) return;
+      var remaining = Math.max(0, activeAudio.duration - activeAudio.currentTime);
       if (remaining > crossfadeSeconds) return;
       var next = nextItemAfterCurrent(playlistItems);
       if (!next || next.track_id === currentTrackId) return;
       beginCrossfade(next);
+    }
+
+    /** Blendet per Crossfade zu einem echten vorherigen Track zurueck (Verlaufsspeicher). */
+    function goToPrevious() {
+      if (crossfading || !playHistory.length) return;
+      var prev = playHistory.pop();
+      beginCrossfade(prev, true);
     }
 
     /* -- Steuerelemente: wirken immer auf das gerade aktive <audio>-Element -- */
@@ -295,8 +328,16 @@
         if (activeAudio.paused) { activeAudio.play(); } else { activeAudio.pause(); }
       });
     }
-    if (prevBtn) prevBtn.addEventListener('click', function () { activeAudio.currentTime = 0; });
-    if (nextBtn) nextBtn.addEventListener('click', function () { if (!crossfading) advanceToNext(); });
+    if (prevBtn) prevBtn.addEventListener('click', goToPrevious);
+    if (nextBtn) {
+      nextBtn.addEventListener('click', function () {
+        if (crossfading) return;
+        // Skip soll wie beim natuerlichen Trackende nie hart schneiden,
+        // sondern immer per Crossfade uebergehen (siehe Nutzeranforderung).
+        var next = nextItemAfterCurrent(playlistItems);
+        if (next) beginCrossfade(next); else advanceToNext();
+      });
+    }
 
     [audioA, audioB].forEach(function (el) {
       el.addEventListener('play', function (e) { if (e.target === activeAudio && playBtn) playBtn.textContent = '⏸'; });
@@ -306,10 +347,15 @@
         advanceToNext();
       });
       el.addEventListener('loadedmetadata', function (e) {
-        if (e.target !== activeAudio || !seek || !durEl) return;
-        seek.max = activeAudio.duration || 0;
-        durEl.textContent = '-' + formatDuration(activeAudio.duration);
-        durEl.classList.remove('is-ending-soon');
+        if (e.target !== activeAudio) return;
+        syncDurationUI();
+      });
+      // Manche Browser korrigieren die anfangs geschaetzte Dauer eines
+      // gestreamten Tracks spaeter (z.B. bei VBR-MP3s ohne exakten Xing-
+      // Header) - Balken/Restzeit dann ebenfalls nachziehen.
+      el.addEventListener('durationchange', function (e) {
+        if (e.target !== activeAudio) return;
+        syncDurationUI();
       });
       el.addEventListener('timeupdate', function (e) {
         if (e.target !== activeAudio) return;
@@ -587,12 +633,14 @@
       var html = '';
       tracks.forEach(function (t) {
         html += '<div class="app-track-row" data-id="' + t.id + '">' +
-          '<div class="app-track-row__title">' + escapeHtml(t.title || t.filename || '(ohne Titel)') + '</div>' +
-          '<div class="app-track-row__sub">' + escapeHtml(t.artist || '') + (t.album ? ' · ' + escapeHtml(t.album) : '') + '</div>' +
-          '<div class="app-track-row__sub">' + formatDuration(t.duration_seconds) + '</div>' +
+          '<div class="app-track-row__cover">' + (t.has_cover ? '<img src="' + api('api/cover.php?id=' + t.id) + '" alt="">' : '') + '</div>' +
+          '<div class="app-track-row__title">' + escapeHtml(t.title || t.filename || '(ohne Titel)') +
+            (t.locked ? ' <span class="pnk-badge" title="Kürzlich gespielt">🔒</span>' : '') + '</div>' +
+          '<div class="app-track-row__sub app-track-row__sub--meta">' + escapeHtml(t.artist || '') + (t.album ? ' · ' + escapeHtml(t.album) : '') + '</div>' +
+          '<div class="app-track-row__sub app-track-row__sub--year">' + (t.year || '') + '</div>' +
+          '<div class="app-track-row__sub app-track-row__sub--duration">' + formatDuration(t.duration_seconds) + '</div>' +
           '<div class="app-track-row__actions">' +
             '<button class="pnk-btn pnk-btn--ghost pnk-btn--sm btn-add-playlist" type="button" title="Zur Playlist hinzufuegen">+ Playlist</button>' +
-            '<button class="pnk-btn pnk-btn--primary pnk-btn--sm btn-play" type="button">▶ Play</button>' +
           '</div>' +
           '</div>';
       });
@@ -602,9 +650,6 @@
       }
       trackList.querySelectorAll('.app-track-row').forEach(function (row) {
         var id = parseInt(row.getAttribute('data-id'), 10);
-        var t = tracks.find(function (x) { return x.id === id; });
-        row.querySelector('.btn-play').addEventListener('click', function () { if (window.APP_PLAY_TRACK) window.APP_PLAY_TRACK(t); });
-        row.addEventListener('dblclick', function () { if (window.APP_PLAY_TRACK) window.APP_PLAY_TRACK(t); });
         var addBtn = row.querySelector('.btn-add-playlist');
         if (addBtn) {
           addBtn.addEventListener('click', function (e) {
@@ -632,6 +677,64 @@
       searchTimer = setTimeout(function () { loadTracks(searchInput.value); }, 120);
     });
     loadTracks('');
+  }
+
+  /* ================================================================== *
+   * "Kuerzlich gespielt"-Liste (player.php) - Tracks, die wegen der
+   * 4h-Sperre (Setting recent_played_lock_hours) fuer Gastwuensche und
+   * Auto-DJ aktuell nicht verfuegbar sind, mit Countdown + manueller
+   * Admin-Freigabe. #recently-played-list existiert nur auf player.php.
+   * ================================================================== */
+  function initRecentlyPlayed() {
+    var list = document.getElementById('recently-played-list');
+    if (!list) return;
+
+    function render(tracks) {
+      if (!tracks.length) {
+        list.innerHTML = '<div class="app-empty">Aktuell keine gesperrten Tracks.</div>';
+        return;
+      }
+      var html = '';
+      tracks.forEach(function (t) {
+        var remaining = Math.max(0, Math.round((new Date(t.locked_until).getTime() - Date.now()) / 1000));
+        html += '<div class="app-request-item" data-track-id="' + t.id + '">' +
+          '<div>' +
+            '<div style="font-weight:600;">' + escapeHtml(t.title || '(ohne Titel)') + '</div>' +
+            '<div class="pnk-text-muted app-recently-played-countdown" style="font-size:12px;" data-until="' + escapeHtml(t.locked_until) + '">' +
+              escapeHtml(t.artist || '') + ' · noch ' + formatDuration(remaining) + ' gesperrt</div>' +
+          '</div>' +
+          '<button class="pnk-btn pnk-btn--ghost pnk-btn--sm btn-release-lock" data-id="' + t.id + '">Jetzt freigeben</button>' +
+        '</div>';
+      });
+      list.innerHTML = html;
+      list.querySelectorAll('.btn-release-lock').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          btn.disabled = true;
+          postJson(api('api/playlist.php'), { action: 'release_lock', track_id: btn.getAttribute('data-id'), csrf_token: CSRF })
+            .then(load);
+        });
+      });
+    }
+
+    function load() {
+      fetch(api('api/tracks.php?recently_played=1'))
+        .then(function (r) { return r.json(); })
+        .then(function (j) { render(j.tracks || []); });
+    }
+
+    load();
+    var timerId = setInterval(load, 8000);
+    window.APP_PAGE_TIMERS = window.APP_PAGE_TIMERS || [];
+    window.APP_PAGE_TIMERS.push(timerId);
+
+    // Countdown-Text zwischen den 8s-Polls sanft weiterlaufen lassen.
+    var tickId = setInterval(function () {
+      list.querySelectorAll('.app-recently-played-countdown').forEach(function (el) {
+        var remaining = Math.max(0, Math.round((new Date(el.getAttribute('data-until')).getTime() - Date.now()) / 1000));
+        el.textContent = el.textContent.replace(/noch .* gesperrt/, 'noch ' + formatDuration(remaining) + ' gesperrt');
+      });
+    }, 1000);
+    window.APP_PAGE_TIMERS.push(tickId);
   }
 
   /* ================================================================== *
@@ -818,6 +921,7 @@
    * ================================================================== */
   function initPageWidgets() {
     initTrackList();
+    initRecentlyPlayed();
     initScanButtons();
     initFolderPicker();
     if (window.APP_INIT_AUTO_DJ_TOGGLE) window.APP_INIT_AUTO_DJ_TOGGLE();

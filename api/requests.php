@@ -5,6 +5,7 @@ require __DIR__ . '/../bootstrap.php';
 use App\Auth;
 use App\Csrf;
 use App\GuestIdentity;
+use App\Repositories\GuestProfileRepository;
 use App\Repositories\PlaylistRepository;
 use App\Repositories\RequestRepository;
 use App\Repositories\SettingRepository;
@@ -20,17 +21,68 @@ function json_fail(int $code, string $message, array $extra = []): void
     exit;
 }
 
+/** Kontingent-Infos fuer die Begruessung/den Countdown auf der Gaeste-Seite. */
+function guestLimitInfo(string $guestToken, RequestRepository $repo, SettingRepository $settings): array
+{
+    $limitCount = (int) $settings->get('guest_limit_count', '3');
+    $limitMinutes = (int) $settings->get('guest_limit_minutes', '60');
+    $used = $limitCount > 0 ? $repo->countRecentByGuestToken($guestToken, $limitMinutes) : 0;
+    $waitSeconds = 0;
+    if ($used > 0) {
+        $oldest = $repo->oldestRecentByGuestToken($guestToken, $limitMinutes);
+        $waitSeconds = $oldest !== null ? max(0, (strtotime($oldest) + $limitMinutes * 60) - time()) : 0;
+    }
+    return [
+        'limit_count' => $limitCount,
+        'limit_minutes' => $limitMinutes,
+        'used' => $used,
+        'remaining' => $limitCount > 0 ? max(0, $limitCount - $used) : null,
+        'wait_seconds' => $waitSeconds,
+    ];
+}
+
 $repo = new RequestRepository();
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET') {
+    $status = $_GET['status'] ?? null;
+
+    if ($status === 'guests') {
+        // Admin-Uebersicht: welche Gaeste haben wie viele Wuensche im
+        // aktuellen Zeitfenster verbraucht (siehe admin/requests.php).
+        Auth::requireLoginApi();
+        $settings = new SettingRepository();
+        $limitCount = (int) $settings->get('guest_limit_count', '3');
+        $limitMinutes = (int) $settings->get('guest_limit_minutes', '60');
+        $rows = $repo->listGuestsSummary($limitMinutes);
+        echo json_encode(['guests' => array_map(static function (array $g) use ($limitCount, $limitMinutes): array {
+            $used = (int) $g['used'];
+            $waitSeconds = $g['oldest_created_at']
+                ? max(0, (strtotime($g['oldest_created_at']) + $limitMinutes * 60) - time())
+                : 0;
+            return [
+                'guest_token' => $g['guest_token'],
+                'name' => $g['locked_name'] ?: ($g['last_guest_name'] ?: '-'),
+                'used' => $used,
+                'remaining' => $limitCount > 0 ? max(0, $limitCount - $used) : null,
+                'wait_seconds' => $waitSeconds,
+            ];
+        }, $rows)]);
+        exit;
+    }
+
     // Wunschliste anzeigen - fuer die Party-Anzeige/Wunsch-Seite oeffentlich
     // lesbar (keine sensiblen Daten: nur Songtitel + optionaler Gastname).
-    $status = $_GET['status'] ?? null;
-    if ($status !== null && !in_array($status, ['pending', 'approved', 'played', 'rejected', 'upcoming'], true)) {
+    if ($status !== null && !in_array($status, ['pending', 'approved', 'played', 'rejected', 'upcoming', 'feed'], true)) {
         json_fail(400, 'Ungueltiger Status.');
     }
-    $rows = $status === 'upcoming' ? $repo->listUpcomingWithTracks(100) : $repo->listWithTracks($status, 100);
+    if ($status === 'feed') {
+        $rows = $repo->listRecentForGuestFeed(60);
+    } elseif ($status === 'upcoming') {
+        $rows = $repo->listUpcomingWithTracks(100);
+    } else {
+        $rows = $repo->listWithTracks($status, 100);
+    }
     echo json_encode(['requests' => array_map(static function (array $r): array {
         return [
             'id' => (int) $r['id'],
@@ -56,6 +108,22 @@ if ($method === 'POST') {
         json_fail(400, 'Ungueltiges Formular. Bitte Seite neu laden.');
     }
 
+    if ($action === 'set_name') {
+        // Namens-Sperre: der erste fuer dieses Geraet (Gast-Cookie) gesetzte
+        // Name gilt dauerhaft, ein spaeterer Aenderungsversuch wird
+        // ignoriert - schaltet auf der Wunschseite die Suche frei.
+        $name = trim((string) ($input['name'] ?? ''));
+        if ($name === '') {
+            json_fail(400, 'Bitte gib deinen Namen ein.');
+        }
+        $name = mb_substr($name, 0, 60);
+        $guestToken = GuestIdentity::id();
+        $lockedName = (new GuestProfileRepository())->lockName($guestToken, $name);
+        $info = guestLimitInfo($guestToken, $repo, new SettingRepository());
+        echo json_encode(array_merge(['ok' => true, 'name' => $lockedName], $info));
+        exit;
+    }
+
     if ($action === 'create') {
         $trackId = (int) ($input['track_id'] ?? 0);
         $guestName = trim((string) ($input['guest_name'] ?? ''));
@@ -65,9 +133,16 @@ if ($method === 'POST') {
         $guestName = mb_substr($guestName, 0, 60);
         $guestToken = GuestIdentity::id();
 
-        $track = (new TrackRepository())->findById($trackId);
+        $trackRepo = new TrackRepository();
+        $track = $trackRepo->findById($trackId);
         if (!$track) {
             json_fail(404, 'Song nicht gefunden.');
+        }
+
+        $settings = new SettingRepository();
+        $lockHours = (int) $settings->get('recent_played_lock_hours', '4');
+        if ($trackRepo->isLocked($track, $lockHours)) {
+            json_fail(409, 'Dieser Track wurde kürzlich gespielt und ist noch gesperrt.');
         }
 
         // Grobe, feste IP-Bremse als zusaetzliches Sicherheitsnetz (z.B. falls
@@ -77,19 +152,15 @@ if ($method === 'POST') {
             json_fail(429, 'Zu viele Wünsche in kurzer Zeit. Bitte kurz warten.');
         }
 
-        $settings = new SettingRepository();
-        $limitCount = (int) $settings->get('guest_limit_count', '3');
-        $limitMinutes = (int) $settings->get('guest_limit_minutes', '60');
-        if ($limitCount > 0 && $repo->countRecentByGuestToken($guestToken, $limitMinutes) >= $limitCount) {
-            $timeLabel = $limitMinutes % 60 === 0 && $limitMinutes >= 60
-                ? ($limitMinutes / 60) . ' Std.'
-                : $limitMinutes . ' Min.';
-            $oldest = $repo->oldestRecentByGuestToken($guestToken, $limitMinutes);
-            $waitSeconds = $oldest !== null ? max(0, (strtotime($oldest) + $limitMinutes * 60) - time()) : 0;
+        $limitInfo = guestLimitInfo($guestToken, $repo, $settings);
+        if ($limitInfo['remaining'] === 0) {
+            $timeLabel = $limitInfo['limit_minutes'] % 60 === 0 && $limitInfo['limit_minutes'] >= 60
+                ? ($limitInfo['limit_minutes'] / 60) . ' Std.'
+                : $limitInfo['limit_minutes'] . ' Min.';
             json_fail(
                 429,
-                "Du hast das Limit von {$limitCount} Wünschen pro {$timeLabel} erreicht. Nächster Wunsch möglich in " . Util::formatWait($waitSeconds) . '.',
-                ['wait_seconds' => $waitSeconds]
+                "Du hast das Limit von {$limitInfo['limit_count']} Wünschen pro {$timeLabel} erreicht. Nächster Wunsch möglich in " . Util::formatWait($limitInfo['wait_seconds']) . '.',
+                ['wait_seconds' => $limitInfo['wait_seconds']]
             );
         }
 
@@ -105,12 +176,23 @@ if ($method === 'POST') {
             $id = $repo->create($trackId, $guestName, $guestToken);
         }
 
-        echo json_encode(['ok' => true, 'id' => $id, 'auto_dj' => $autoDj]);
+        $limitInfo = guestLimitInfo($guestToken, $repo, $settings);
+        echo json_encode(array_merge(['ok' => true, 'id' => $id, 'auto_dj' => $autoDj], $limitInfo));
         exit;
     }
 
     // Alle weiteren Aktionen (Status aendern) sind Admin-only.
     Auth::requireLoginApi();
+
+    if ($action === 'reset_guest_limit') {
+        $guestToken = (string) ($input['guest_token'] ?? '');
+        if ($guestToken === '') {
+            json_fail(400, 'Kein Gast angegeben.');
+        }
+        $repo->setLimitReset($guestToken);
+        echo json_encode(['ok' => true]);
+        exit;
+    }
 
     if ($action === 'update_status') {
         $id = (int) ($input['id'] ?? 0);

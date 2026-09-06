@@ -9,17 +9,14 @@ final class TrackRepository
 {
     /**
      * Legt einen Track an oder aktualisiert ihn, falls library_id+relpath
-     * schon existiert. Gedacht fuer den Scanner (ein Aufruf pro Datei -
-     * das ist bei ein paar tausend Dateien pro Scan-Chunk voellig
-     * ausreichend performant und bleibt auf jedem DB-Treiber portabel).
+     * schon existiert - als echtes atomares UPSERT (nicht mehr
+     * SELECT-dann-INSERT-oder-UPDATE), damit zwei ueberlappende Scan-
+     * Aufrufe fuer dieselbe Datei niemals eine Dublette erzeugen koennen.
+     * Gibt die (neue oder bestehende) Track-ID zurueck.
      */
-    public function upsert(int $libraryId, string $relpath, array $meta): void
+    public function upsert(int $libraryId, string $relpath, array $meta): int
     {
         $pdo = Database::get();
-        $stmt = $pdo->prepare('SELECT id FROM tracks WHERE library_id = ? AND relpath = ?');
-        $stmt->execute([$libraryId, $relpath]);
-        $existing = $stmt->fetch();
-
         $now = Util::now();
         $fields = [
             'filename' => $meta['filename'],
@@ -36,19 +33,28 @@ final class TrackRepository
             'filesize' => $meta['filesize'],
             'mtime' => $meta['mtime'],
             'codec' => $meta['codec'],
+            'cover_ext' => $meta['cover_ext'] ?? null,
         ];
-
-        if ($existing) {
-            $set = implode(', ', array_map(fn ($k) => "$k = ?", array_keys($fields)));
-            $stmt = $pdo->prepare("UPDATE tracks SET {$set}, updated_at = ? WHERE id = ?");
-            $stmt->execute([...array_values($fields), $now, $existing['id']]);
-            return;
-        }
 
         $columns = array_merge(['library_id', 'relpath'], array_keys($fields), ['added_at', 'updated_at']);
         $placeholders = implode(', ', array_fill(0, count($columns), '?'));
-        $stmt = $pdo->prepare('INSERT INTO tracks (' . implode(', ', $columns) . ") VALUES ({$placeholders})");
-        $stmt->execute([$libraryId, $relpath, ...array_values($fields), $now, $now]);
+        $params = [$libraryId, $relpath, ...array_values($fields), $now, $now];
+
+        if (Database::driver() === 'mysql') {
+            $updateSet = implode(', ', array_map(fn ($k) => "$k = VALUES($k)", array_keys($fields)));
+            $sql = 'INSERT INTO tracks (' . implode(', ', $columns) . ") VALUES ({$placeholders})
+                    ON DUPLICATE KEY UPDATE {$updateSet}, updated_at = VALUES(updated_at)";
+        } else {
+            $updateSet = implode(', ', array_map(fn ($k) => "$k = excluded.$k", array_keys($fields)));
+            $sql = 'INSERT INTO tracks (' . implode(', ', $columns) . ") VALUES ({$placeholders})
+                    ON CONFLICT(library_id, relpath) DO UPDATE SET {$updateSet}, updated_at = excluded.updated_at";
+        }
+
+        $pdo->prepare($sql)->execute($params);
+
+        $stmt = $pdo->prepare('SELECT id FROM tracks WHERE library_id = ? AND relpath = ?');
+        $stmt->execute([$libraryId, $relpath]);
+        return (int) $stmt->fetch()['id'];
     }
 
     /** @return string[] relpaths, die aktuell fuer diese Library in der DB stehen */
@@ -75,6 +81,14 @@ final class TrackRepository
         $stmt = Database::get()->prepare('SELECT COUNT(*) AS c FROM tracks WHERE library_id = ?');
         $stmt->execute([$libraryId]);
         return (int) $stmt->fetch()['c'];
+    }
+
+    public function findByLibraryAndRelpath(int $libraryId, string $relpath): ?array
+    {
+        $stmt = Database::get()->prepare('SELECT * FROM tracks WHERE library_id = ? AND relpath = ?');
+        $stmt->execute([$libraryId, $relpath]);
+        $row = $stmt->fetch();
+        return $row ?: null;
     }
 
     public function findById(int $id): ?array
@@ -105,14 +119,16 @@ final class TrackRepository
                 WHERE LOWER(title) LIKE LOWER(?) ESCAPE '\\'
                    OR LOWER(artist) LIKE LOWER(?) ESCAPE '\\'
                    OR LOWER(album) LIKE LOWER(?) ESCAPE '\\'
+                   OR CAST(year AS CHAR) LIKE ?
                 ORDER BY artist, album, track_no, title
                 LIMIT ? OFFSET ?";
         $stmt = $pdo->prepare($sql);
         $stmt->bindValue(1, $like);
         $stmt->bindValue(2, $like);
         $stmt->bindValue(3, $like);
-        $stmt->bindValue(4, $limit, \PDO::PARAM_INT);
-        $stmt->bindValue(5, $offset, \PDO::PARAM_INT);
+        $stmt->bindValue(4, $like);
+        $stmt->bindValue(5, $limit, \PDO::PARAM_INT);
+        $stmt->bindValue(6, $offset, \PDO::PARAM_INT);
         $stmt->execute();
         return $stmt->fetchAll();
     }
@@ -120,5 +136,45 @@ final class TrackRepository
     public function countAll(): int
     {
         return (int) Database::get()->query('SELECT COUNT(*) AS c FROM tracks')->fetch()['c'];
+    }
+
+    /**
+     * Tracks, deren letzte Wiedergabe innerhalb der Sperrfrist liegt (und
+     * die nicht vom Admin vorzeitig freigegeben wurden). Fuer die
+     * "Kuerzlich gespielt"-Liste auf der Player-Seite.
+     */
+    public function listRecentlyPlayed(int $hours): array
+    {
+        $cutoff = date('Y-m-d H:i:s', time() - $hours * 3600);
+        $stmt = Database::get()->prepare(
+            "SELECT * FROM tracks
+             WHERE last_played_at IS NOT NULL AND last_played_at > ?
+               AND (lock_released_at IS NULL OR lock_released_at < last_played_at)
+             ORDER BY last_played_at DESC"
+        );
+        $stmt->execute([$cutoff]);
+        return $stmt->fetchAll();
+    }
+
+    /** Ob ein einzelner Track aktuell wegen kuerzlicher Wiedergabe gesperrt ist. */
+    public function isLocked(array $track, int $hours): bool
+    {
+        if (empty($track['last_played_at'])) {
+            return false;
+        }
+        if ($track['last_played_at'] <= date('Y-m-d H:i:s', time() - $hours * 3600)) {
+            return false;
+        }
+        if (!empty($track['lock_released_at']) && $track['lock_released_at'] >= $track['last_played_at']) {
+            return false;
+        }
+        return true;
+    }
+
+    /** Setzt die Admin-Freigabe fuer einen einzelnen gesperrten Track. */
+    public function releaseLock(int $trackId): void
+    {
+        $stmt = Database::get()->prepare('UPDATE tracks SET lock_released_at = ? WHERE id = ?');
+        $stmt->execute([Util::now(), $trackId]);
     }
 }

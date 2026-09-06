@@ -21,7 +21,7 @@ final class Database
      * hoehere Code-Version, schickt einen angemeldeten Admin automatisch zu
      * install.php und die Migration laeuft dort erst nach einem Klick.
      */
-    public const SCHEMA_VERSION = 2;
+    public const SCHEMA_VERSION = 3;
 
     public static function get(): \PDO
     {
@@ -121,6 +121,8 @@ final class Database
         self::ensureColumn($pdo, $driver, 'requests', 'guest_token', $driver === 'mysql' ? 'VARCHAR(32)' : 'TEXT');
         self::ensureColumn($pdo, $driver, 'tracks', 'last_played_at', $driver === 'mysql' ? 'DATETIME NULL' : 'TEXT');
         self::ensureColumn($pdo, $driver, 'playlist', 'position', $driver === 'mysql' ? 'INT NOT NULL DEFAULT 0' : 'INTEGER NOT NULL DEFAULT 0');
+        self::ensureColumn($pdo, $driver, 'tracks', 'cover_ext', $driver === 'mysql' ? 'VARCHAR(8) NULL' : 'TEXT');
+        self::ensureColumn($pdo, $driver, 'tracks', 'lock_released_at', $driver === 'mysql' ? 'DATETIME NULL' : 'TEXT');
 
         self::runStatements($pdo, [
             $driver === 'mysql'
@@ -299,6 +301,29 @@ final class Database
         $statements[] = $isMysql
             ? "CREATE UNIQUE INDEX idx_settings_key ON settings (setting_key)"
             : "CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_key ON settings (setting_key)";
+
+        // Pro Geraet (guest_token-Cookie) fuer 24h fest vergebener Name -
+        // dient als "Namens-Sperre" auf der Wunschseite, siehe
+        // GuestProfileRepository::lockName() / api/requests.php Action set_name.
+        $statements[] = "CREATE TABLE IF NOT EXISTS guest_profiles (
+            guest_token {$varchar32} NOT NULL,
+            name {$varchar190} NOT NULL,
+            created_at {$datetimeNotNull}
+        ){$engine}";
+        $statements[] = $isMysql
+            ? "CREATE UNIQUE INDEX idx_guest_profiles_token ON guest_profiles (guest_token)"
+            : "CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_profiles_token ON guest_profiles (guest_token)";
+
+        // Manueller Admin-Reset des Wunsch-Kontingents: verschiebt die
+        // untere Zeitgrenze fuer die Kontingent-Zaehlung eines Gasts nach
+        // vorn, ohne dessen bisherige requests-Zeilen zu loeschen.
+        $statements[] = "CREATE TABLE IF NOT EXISTS guest_limit_resets (
+            guest_token {$varchar32} NOT NULL,
+            reset_at {$datetimeNotNull}
+        ){$engine}";
+        $statements[] = $isMysql
+            ? "CREATE UNIQUE INDEX idx_guest_limit_resets_token ON guest_limit_resets (guest_token)"
+            : "CREATE UNIQUE INDEX IF NOT EXISTS idx_guest_limit_resets_token ON guest_limit_resets (guest_token)";
 
         return $statements;
     }

@@ -41,14 +41,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         Csrf::requireValid();
         $guestLimitCount = (int) ($_POST['guest_limit_count'] ?? 0);
         $guestLimitMinutes = (int) ($_POST['guest_limit_minutes'] ?? 0);
+        $lockHours = (int) ($_POST['recent_played_lock_hours'] ?? 0);
+        $previewSeconds = (int) ($_POST['preview_seconds'] ?? 0);
 
         if ($guestLimitCount < 0 || $guestLimitMinutes < 0) {
             $error = 'Limit und Zeitraum duerfen nicht negativ sein.';
         } elseif ($guestLimitCount > 0 && $guestLimitMinutes < 1) {
             $error = 'Bei aktivem Limit muss der Zeitraum mindestens 1 Minute betragen.';
+        } elseif ($lockHours < 0) {
+            $error = 'Die Sperrfrist darf nicht negativ sein.';
+        } elseif ($previewSeconds < 5 || $previewSeconds > 60) {
+            $error = 'Die Vorhoerdauer muss zwischen 5 und 60 Sekunden liegen.';
         } else {
             $settings->set('guest_limit_count', (string) $guestLimitCount);
             $settings->set('guest_limit_minutes', (string) max(1, $guestLimitMinutes));
+            $settings->set('recent_played_lock_hours', (string) $lockHours);
+            $settings->set('preview_seconds', (string) $previewSeconds);
             $success = 'Einstellungen gespeichert.';
         }
     }
@@ -99,6 +107,8 @@ $requestUrlOverride = $settings->get('request_url_override', '');
 $requestUrl = ($requestUrlOverride ?: rtrim(Config::get('app_url', ''), '/')) . app_url('request.php');
 $guestLimitCount = (int) $settings->get('guest_limit_count', '3');
 $guestLimitMinutes = (int) $settings->get('guest_limit_minutes', '60');
+$recentPlayedLockHours = (int) $settings->get('recent_played_lock_hours', '4');
+$previewSeconds = (int) $settings->get('preview_seconds', '20');
 $tickerEnabled = $settings->get('ticker_enabled', '0') === '1';
 $countdownEnabled = $settings->get('countdown_enabled', '0') === '1';
 $crossfadeEnabled = $settings->get('crossfade_enabled', '0') === '1';
@@ -184,6 +194,22 @@ require __DIR__ . '/../templates/admin_header.php';
         Gäste werden ueber ein Cookie wiedererkannt (kein Login noetig) - so laesst
         sich z.B. auf "max. 3 Wünsche pro Stunde und Gast" begrenzen.
       </p>
+      <div class="grid-2" style="margin-top:16px;">
+        <div>
+          <label class="pnk-label">Sperrfrist für kürzlich gespielte Tracks (Stunden)</label>
+          <input class="pnk-input" type="number" min="0" step="1" name="recent_played_lock_hours" value="<?= (int) $recentPlayedLockHours ?>">
+          <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0;">
+            0 = keine Sperre. Gilt für Gastwünsche und den Auto-DJ, siehe "Kürzlich gespielt" auf der Player-Seite.
+          </p>
+        </div>
+        <div>
+          <label class="pnk-label">Vorhördauer (Sekunden)</label>
+          <input class="pnk-input" type="number" min="5" max="60" step="1" name="preview_seconds" value="<?= (int) $previewSeconds ?>">
+          <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0;">
+            Ausschnitt aus der Mitte des Tracks, den Gäste vor dem Wünschen anhören können.
+          </p>
+        </div>
+      </div>
       <button class="pnk-btn pnk-btn--primary" type="submit" style="margin-top:16px;">Speichern</button>
     </form>
   </div>

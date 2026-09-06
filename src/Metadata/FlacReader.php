@@ -15,7 +15,9 @@ final class FlacReader
             'title' => null, 'artist' => null, 'album' => null, 'album_artist' => null,
             'genre' => null, 'track_no' => null, 'disc_no' => null, 'year' => null,
             'duration_seconds' => null, 'bitrate' => null,
+            'cover_mime' => null, 'cover_data' => null,
         ];
+        $bestCover = null;
 
         $fh = fopen($path, 'rb');
         if ($fh === false) {
@@ -51,6 +53,11 @@ final class FlacReader
                 } elseif ($blockType === 4) { // VORBIS_COMMENT
                     $tags = self::parseVorbisComment($blockData);
                     $result = self::applyTags($result, $tags);
+                } elseif ($blockType === 6) { // PICTURE
+                    $pic = self::parsePicture($blockData);
+                    if ($pic !== null && ($bestCover === null || ($pic['type'] === 3 && $bestCover['type'] !== 3))) {
+                        $bestCover = $pic;
+                    }
                 }
 
                 if ($isLast) {
@@ -60,6 +67,11 @@ final class FlacReader
             }
         } finally {
             fclose($fh);
+        }
+
+        if ($bestCover !== null) {
+            $result['cover_mime'] = $bestCover['mime'];
+            $result['cover_data'] = $bestCover['data'];
         }
 
         return $result;
@@ -125,6 +137,49 @@ final class FlacReader
     {
         $b = array_values(unpack('C4', substr($data, $pos, 4)));
         return $b[0] | ($b[1] << 8) | ($b[2] << 16) | ($b[3] << 24);
+    }
+
+    private static function readUint32BE(string $data, int $pos): int
+    {
+        $b = array_values(unpack('C4', substr($data, $pos, 4)));
+        return ($b[0] << 24) | ($b[1] << 16) | ($b[2] << 8) | $b[3];
+    }
+
+    /**
+     * PICTURE-Block (Typ 6): Bildtyp, MIME-String, Beschreibung, Breite/
+     * Hoehe/Farbtiefe/Farbanzahl (je 4 Byte, ignoriert), dann Bilddaten -
+     * alle Zahlenfelder big-endian (im Gegensatz zu den Vorbis-Kommentaren).
+     */
+    private static function parsePicture(string $data): ?array
+    {
+        $len = strlen($data);
+        if ($len < 32) {
+            return null;
+        }
+        $pos = 0;
+        $pictureType = self::readUint32BE($data, $pos);
+        $pos += 4;
+        $mimeLen = self::readUint32BE($data, $pos);
+        $pos += 4;
+        if ($pos + $mimeLen > $len) {
+            return null;
+        }
+        $mime = strtolower(trim(substr($data, $pos, $mimeLen)));
+        $pos += $mimeLen;
+        if ($pos + 4 > $len) {
+            return null;
+        }
+        $descLen = self::readUint32BE($data, $pos);
+        $pos += 4 + $descLen + 16; // Beschreibung ueberspringen + width/height/depth/colorCount
+        if ($pos + 4 > $len || $mime === '' || $mime === '-->') {
+            return null;
+        }
+        $dataLen = self::readUint32BE($data, $pos);
+        $pos += 4;
+        if ($dataLen <= 0 || $pos + $dataLen > $len) {
+            return null;
+        }
+        return ['mime' => $mime, 'data' => substr($data, $pos, $dataLen), 'type' => $pictureType];
     }
 
     private static function applyTags(array $result, array $tags): array
