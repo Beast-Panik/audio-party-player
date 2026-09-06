@@ -70,11 +70,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($form === 'player') {
         Csrf::requireValid();
         $crossfadeSeconds = (int) ($_POST['crossfade_seconds'] ?? 3);
+        $masterVolume = (int) ($_POST['master_volume'] ?? 100);
+        $pauseFadeOutMs = (int) ($_POST['pause_fade_out_ms'] ?? 300);
+        $pauseFadeInMs = (int) ($_POST['pause_fade_in_ms'] ?? 300);
         if ($crossfadeSeconds < 1 || $crossfadeSeconds > 15) {
             $error = 'Uebergangszeit muss zwischen 1 und 15 Sekunden liegen.';
+        } elseif ($masterVolume < 0 || $masterVolume > 100) {
+            $error = 'Lautstaerke muss zwischen 0 und 100% liegen.';
+        } elseif ($pauseFadeOutMs < 0 || $pauseFadeOutMs > 5000 || $pauseFadeInMs < 0 || $pauseFadeInMs > 5000) {
+            $error = 'Auf-/Abblendzeit muss zwischen 0 und 5000ms liegen.';
         } else {
             $settings->set('crossfade_enabled', !empty($_POST['crossfade_enabled']) ? '1' : '0');
             $settings->set('crossfade_seconds', (string) $crossfadeSeconds);
+            $settings->set('master_volume', (string) $masterVolume);
+            $settings->set('pause_fade_out_ms', (string) $pauseFadeOutMs);
+            $settings->set('pause_fade_in_ms', (string) $pauseFadeInMs);
             $success = 'Einstellungen gespeichert.';
         }
     }
@@ -129,6 +139,9 @@ $countdownEnabled = $settings->get('countdown_enabled', '0') === '1';
 $countdownFontSize = (int) $settings->get('countdown_font_size', '22');
 $crossfadeEnabled = $settings->get('crossfade_enabled', '0') === '1';
 $crossfadeSeconds = (int) $settings->get('crossfade_seconds', '3');
+$masterVolume = (int) $settings->get('master_volume', '100');
+$pauseFadeOutMs = (int) $settings->get('pause_fade_out_ms', '300');
+$pauseFadeInMs = (int) $settings->get('pause_fade_in_ms', '300');
 
 if (!function_exists('settings_accordion_open')) {
     function settings_accordion_open(string $key, string $openSection): string
@@ -252,10 +265,29 @@ require __DIR__ . '/../templates/admin_header.php';
       </label>
       <label class="pnk-label">Übergangszeit (Sekunden)</label>
       <input class="pnk-input" type="number" min="1" max="15" step="1" name="crossfade_seconds" value="<?= (int) $crossfadeSeconds ?>" style="max-width:120px;">
-      <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0;">
+      <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0 0;">
         Der aktuelle Track wird ausgeblendet, waehrend der naechste eingeblendet
         und schon gestartet wird - kein harter Schnitt zwischen zwei Songs.
       </p>
+
+      <label class="pnk-label" style="margin-top:20px;">Lautstärke (%)</label>
+      <input class="pnk-input" type="number" min="0" max="100" step="1" name="master_volume" value="<?= (int) $masterVolume ?>" style="max-width:120px;">
+      <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0 0;">
+        Gilt fuer die gesamte Wiedergabe (auch waehrend Crossfade und Auf-/
+        Abblenden) - z.B. 80%, wenn der Player nie ganz auf volle Lautstaerke
+        gehen soll.
+      </p>
+
+      <label class="pnk-label" style="margin-top:20px;">Abblenden beim Pausieren (Millisekunden)</label>
+      <input class="pnk-input" type="number" min="0" max="5000" step="50" name="pause_fade_out_ms" value="<?= (int) $pauseFadeOutMs ?>" style="max-width:120px;">
+
+      <label class="pnk-label" style="margin-top:16px;">Aufblenden beim Fortsetzen (Millisekunden)</label>
+      <input class="pnk-input" type="number" min="0" max="5000" step="50" name="pause_fade_in_ms" value="<?= (int) $pauseFadeInMs ?>" style="max-width:120px;">
+      <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0 0;">
+        Beim Klick auf Pause/Play blendet die Lautstaerke sanft statt hart
+        abzuschneiden - 0 = kein Fade (sofortiges Stoppen/Starten).
+      </p>
+
       <button class="pnk-btn pnk-btn--primary" type="submit" style="margin-top:16px;">Speichern</button>
     </form>
   </div>

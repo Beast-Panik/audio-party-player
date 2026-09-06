@@ -94,6 +94,10 @@
     var autoDjEnabled = false;
     var crossfadeEnabled = false;
     var crossfadeSeconds = 3;
+    // Lineare Ziel-Lautstaerke (0..1) fuer normale Wiedergabe, aus der
+    // Einstellung "Lautstaerke (%)" - gilt fuer Crossfade UND Pause-Fade,
+    // ersetzt ueberall das frueher hart codierte "volle Lautstaerke = 1".
+    var masterVolume = 1;
     var crossfading = false;
     // track_id des Tracks, der gerade per Crossfade eingeblendet wird (fuer
     // den Blink-Effekt in der Playlist-Zeile, siehe updateCrossfadeRowClass).
@@ -132,7 +136,10 @@
      * per setInterval statt requestAnimationFrame (siehe beginCrossfade
      * weiter unten - derselbe Grund: laeuft auch in Hintergrund-Tabs
      * zuverlaessig zu Ende). Nur ein Pause-Fade gleichzeitig aktiv. */
-    var PAUSE_FADE_MS = 300;
+    // Aus den Einstellungen (siehe applyPlaylistJson) - Standardwerte hier
+    // nur als Fallback, bevor die erste Playlist-Antwort eintrifft.
+    var pauseFadeOutMs = 300;
+    var pauseFadeInMs = 300;
     var pauseFadeTimer = null;
     // track_id des Tracks, der gerade wegen eines Pause-Klicks ausblendet
     // (fuer den Blink-Effekt in der Playlist-Zeile, siehe setPauseFadeBlink).
@@ -147,6 +154,11 @@
 
     function fadeVolume(el, from, to, ms, done) {
       stopPauseFade();
+      if (ms <= 0) {
+        el.volume = to;
+        if (done) done();
+        return;
+      }
       el.volume = from;
       var startTs = Date.now();
       pauseFadeTimer = setInterval(function () {
@@ -298,8 +310,11 @@
       currentTrackId = trackId;
       activeAudio.src = streamUrl(trackId);
       activeAudio.currentTime = 0;
-      activeAudio.volume = 1;
       activeAudio.play().catch(function () {});
+      // Auch ein "kalter" Start (nichts lief vorher, daher kein Crossfade
+      // moeglich) blendet sanft ein statt hart mit voller Lautstaerke zu
+      // beginnen - konsistent mit "nie hart starten".
+      fadeVolume(activeAudio, 0, masterVolume, pauseFadeInMs);
       npBar.hidden = false;
       titleEl.textContent = title || '(ohne Titel)';
       artistEl.textContent = artist || '';
@@ -340,7 +355,7 @@
       // lassen.
       stopPauseFade();
       setPauseFadeBlink(null);
-      activeAudio.volume = 1;
+      activeAudio.volume = masterVolume;
       crossfading = true;
       crossfadeTargetTrackId = next.track_id;
       updateCrossfadeRowClass();
@@ -366,8 +381,8 @@
       var startTs = Date.now();
       var timer = setInterval(function () {
         var t = Math.min(1, (Date.now() - startTs) / fadeMs);
-        activeAudio.volume = Math.max(0, 1 - t);
-        standbyAudio.volume = Math.min(1, t);
+        activeAudio.volume = Math.max(0, 1 - t) * masterVolume;
+        standbyAudio.volume = Math.min(1, t) * masterVolume;
         if (t >= 1) {
           clearInterval(timer);
           finishCrossfade(next, finished, skipAdvance);
@@ -382,7 +397,7 @@
       var swap = activeAudio;
       activeAudio = standbyAudio;
       standbyAudio = swap;
-      activeAudio.volume = 1;
+      activeAudio.volume = masterVolume;
       currentTrackId = next.track_id;
       titleEl.textContent = next.title || '(ohne Titel)';
       artistEl.textContent = next.artist || '';
@@ -428,12 +443,12 @@
         if (activeAudio.paused) {
           setPauseFadeBlink(null);
           activeAudio.play().catch(function () {});
-          fadeVolume(activeAudio, 0, 1, PAUSE_FADE_MS);
+          fadeVolume(activeAudio, 0, masterVolume, pauseFadeInMs);
         } else {
           setPauseFadeBlink(currentTrackId);
-          fadeVolume(activeAudio, activeAudio.volume, 0, PAUSE_FADE_MS, function () {
+          fadeVolume(activeAudio, activeAudio.volume, 0, pauseFadeOutMs, function () {
             activeAudio.pause();
-            activeAudio.volume = 1;
+            activeAudio.volume = masterVolume;
             setPauseFadeBlink(null);
           });
         }
@@ -627,6 +642,18 @@
       autoDjEnabled = !!j.auto_dj;
       crossfadeEnabled = !!j.crossfade_enabled;
       crossfadeSeconds = j.crossfade_seconds || 3;
+      pauseFadeOutMs = j.pause_fade_out_ms !== undefined ? j.pause_fade_out_ms : pauseFadeOutMs;
+      pauseFadeInMs = j.pause_fade_in_ms !== undefined ? j.pause_fade_in_ms : pauseFadeInMs;
+      if (j.master_volume !== undefined && j.master_volume !== null) {
+        var newMasterVolume = Math.max(0, Math.min(100, j.master_volume)) / 100;
+        // Laesst eine gerade laufende Wiedergabe (nicht mitten in einem
+        // Crossfade/Pause-Fade) sofort auf eine per Einstellungen geaenderte
+        // Lautstaerke reagieren, ohne dass Admin/Gast neu laden muessen.
+        if (newMasterVolume !== masterVolume && !crossfading && !pauseFadeTimer && activeAudio && !activeAudio.paused) {
+          activeAudio.volume = newMasterVolume;
+        }
+        masterVolume = newMasterVolume;
+      }
       playlistItems = j.items || [];
       updateNavBadge(playlistItems.length);
       var next = nextItemAfterCurrent(playlistItems);
@@ -737,7 +764,7 @@
       titleEl.textContent = state.title || '-';
       artistEl.textContent = state.artist || '-';
       activeAudio.src = streamUrl(state.trackId);
-      activeAudio.volume = 1;
+      activeAudio.volume = masterVolume;
       var resume = function () {
         activeAudio.currentTime = state.position || 0;
         if (state.playing) {

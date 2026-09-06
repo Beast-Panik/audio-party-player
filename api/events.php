@@ -67,6 +67,9 @@ function events_payload_admin(): array
         'crossfade_seconds' => (int) $settings->get('crossfade_seconds', '3'),
         'ticker_enabled' => $settings->get('ticker_enabled', '0') === '1',
         'countdown_enabled' => $settings->get('countdown_enabled', '0') === '1',
+        'master_volume' => (int) $settings->get('master_volume', '100'),
+        'pause_fade_out_ms' => (int) $settings->get('pause_fade_out_ms', '300'),
+        'pause_fade_in_ms' => (int) $settings->get('pause_fade_in_ms', '300'),
         // Gleiches Mapping wie api/playlist.php (GET).
         'items' => array_map(static function (array $r): array {
             return [
