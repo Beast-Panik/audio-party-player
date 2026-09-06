@@ -1643,6 +1643,12 @@
           setActiveNav(new URL(url, window.location.origin).pathname);
           if (push) history.pushState({ softNav: true }, '', url);
           if (window.APP_INIT_PAGE) window.APP_INIT_PAGE();
+          // #app-main scrollt intern (overflow-y:auto in einer festen
+          // Grid-Zeile) - window.scrollTo greift hier ins Leere, da das
+          // window/body selbst nie scrollt. Ohne main.scrollTop = 0 landet
+          // die neue Seite an der alten Scroll-Position der vorherigen
+          // Seite, statt oben zu beginnen.
+          main.scrollTop = 0;
           window.scrollTo(0, 0);
         })
         .catch(function () {

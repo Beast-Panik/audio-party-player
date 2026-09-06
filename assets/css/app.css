@@ -260,6 +260,15 @@
     "sidebar main";
   transition: grid-template-columns 160ms ease;
 }
+/* Grid-Items bekommen ohne diese Regel automatisch min-width:auto - dann
+   erzwingt breiter Inhalt (langer Songtitel, unwrapbare Buttons-Zeile) die
+   ganze 1fr-Spalte (und damit die ganze Seite) breiter als der Viewport,
+   statt zu umbrechen/zu clippen. Betrifft alle drei Zeilen dieser Spalte. */
+.app-topbar,
+.app-player-bar,
+.app-shell .pnk-main {
+  min-width: 0;
+}
 .app-shell.app-sidebar-is-collapsed,
 html.app-sidebar-preload-collapsed .app-shell {
   grid-template-columns: 64px 1fr;
