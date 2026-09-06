@@ -282,25 +282,33 @@
       updateCrossfadeRowClass();
       var finished = currentTrackId;
       var fadeMs = Math.max(500, crossfadeSeconds * 1000);
-      var startTs = null;
 
       standbyAudio.src = streamUrl(next.track_id);
       standbyAudio.currentTime = 0;
       standbyAudio.volume = 0;
       standbyAudio.play().catch(function () {});
 
-      function tick(ts) {
-        if (!startTs) startTs = ts;
-        var t = Math.min(1, (ts - startTs) / fadeMs);
+      // Zeitbasiert per setInterval statt requestAnimationFrame: rAF wird
+      // von Browsern in Hintergrund-Tabs komplett angehalten (haengt an der
+      // Bildschirmausgabe), waehrend die <audio>-Wiedergabe selbst weiter-
+      // laeuft - ein Crossfade waere dann nie fertig geworden, "crossfading"
+      // waere dauerhaft true geblieben und der "ended"-Handler des zu Ende
+      // gespielten Tracks haette nichts mehr getan (Wiedergabe blieb haengen,
+      // siehe Nutzer-Report). setInterval feuert auch in Hintergrund-Tabs
+      // weiter (hoechstens auf 1x/Sekunde gedrosselt) und der Fortschritt
+      // wird ueber die tatsaechlich vergangene Zeit berechnet statt ueber
+      // die Anzahl Interval-Aufrufe, damit die Ueberblendung auch gedrosselt
+      // zur richtigen Zeit fertig wird.
+      var startTs = Date.now();
+      var timer = setInterval(function () {
+        var t = Math.min(1, (Date.now() - startTs) / fadeMs);
         activeAudio.volume = Math.max(0, 1 - t);
         standbyAudio.volume = Math.min(1, t);
-        if (t < 1) {
-          requestAnimationFrame(tick);
-        } else {
+        if (t >= 1) {
+          clearInterval(timer);
           finishCrossfade(next, finished, skipAdvance);
         }
-      }
-      requestAnimationFrame(tick);
+      }, 100);
     }
 
     function finishCrossfade(next, finishedTrackId, skipAdvance) {
