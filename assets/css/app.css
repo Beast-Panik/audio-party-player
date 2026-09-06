@@ -589,6 +589,20 @@ html.app-sidebar-preload-collapsed .app-sidebar-ticker {
   animation: app-countdown-blink 1s step-start infinite;
   pointer-events: none;
 }
+/* Blinkt, waehrend der aktuell laufende Track wegen eines Pause-Klicks
+   ausblendet (siehe fadeVolume/setPauseFadeBlink in app.js) - eigene Farbe
+   (--pnk-accent statt --pnk-accent-warm), damit "faedet wegen Pause aus"
+   optisch klar von "startet per Crossfade" unterscheidbar bleibt. */
+.app-playlist-item.is-pause-fading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: var(--pnk-accent);
+  opacity: 0.32;
+  animation: app-countdown-blink 1s step-start infinite;
+  pointer-events: none;
+}
 .app-badge-next {
   background: var(--pnk-accent-warm);
   color: #1c1c1c;

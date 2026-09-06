@@ -127,6 +127,38 @@
       return api('api/stream.php?id=' + trackId);
     }
 
+    /* -- Sanftes Auf-/Abblenden beim manuellen Pausieren/Fortsetzen (Play/
+     * Pause-Button) - kein hartes Abschneiden der Lautstaerke. Zeitbasiert
+     * per setInterval statt requestAnimationFrame (siehe beginCrossfade
+     * weiter unten - derselbe Grund: laeuft auch in Hintergrund-Tabs
+     * zuverlaessig zu Ende). Nur ein Pause-Fade gleichzeitig aktiv. */
+    var PAUSE_FADE_MS = 300;
+    var pauseFadeTimer = null;
+    // track_id des Tracks, der gerade wegen eines Pause-Klicks ausblendet
+    // (fuer den Blink-Effekt in der Playlist-Zeile, siehe setPauseFadeBlink).
+    var pauseFadeTrackId = null;
+
+    function stopPauseFade() {
+      if (pauseFadeTimer) {
+        clearInterval(pauseFadeTimer);
+        pauseFadeTimer = null;
+      }
+    }
+
+    function fadeVolume(el, from, to, ms, done) {
+      stopPauseFade();
+      el.volume = from;
+      var startTs = Date.now();
+      pauseFadeTimer = setInterval(function () {
+        var t = Math.min(1, (Date.now() - startTs) / ms);
+        el.volume = from + (to - from) * t;
+        if (t >= 1) {
+          stopPauseFade();
+          if (done) done();
+        }
+      }, 50);
+    }
+
     function highlightPlayingRow(id) {
       document.querySelectorAll('.app-track-row.is-playing').forEach(function (el) {
         el.classList.remove('is-playing');
@@ -150,6 +182,29 @@
         var row = playlistList.querySelector('.app-playlist-item[data-track-id="' + crossfadeTargetTrackId + '"]');
         if (row) row.classList.add('is-crossfading-in');
       }
+    }
+
+    /** Analog zu updateCrossfadeRowClass(), aber fuer den aktuell laufenden
+     * Track, waehrend er wegen eines manuellen Pause-Klicks ausgeblendet
+     * wird (siehe fadeVolume/playBtn weiter unten) - eigene Farbe, damit
+     * "faedet wegen Pause aus" optisch von "startet per Crossfade" zu
+     * unterscheiden ist. */
+    function updatePauseFadeRowClass() {
+      var playlistList = document.getElementById('playlist-list');
+      if (!playlistList) return;
+      playlistList.querySelectorAll('.app-playlist-item.is-pause-fading').forEach(function (row) {
+        if (String(row.getAttribute('data-track-id')) !== String(pauseFadeTrackId)) {
+          row.classList.remove('is-pause-fading');
+        }
+      });
+      if (pauseFadeTrackId !== null) {
+        var row2 = playlistList.querySelector('.app-playlist-item[data-track-id="' + pauseFadeTrackId + '"]');
+        if (row2) row2.classList.add('is-pause-fading');
+      }
+    }
+    function setPauseFadeBlink(trackId) {
+      pauseFadeTrackId = trackId;
+      updatePauseFadeRowClass();
     }
     window.APP_HIGHLIGHT_PLAYING = highlightPlayingRow;
     window.APP_GET_CURRENT_TRACK = function () { return currentTrackId; };
@@ -237,6 +292,8 @@
 
     /** Laedt einen Track in das aktive <audio>-Element und spielt ihn ab (kein Playlist-Seiteneffekt). */
     function loadAndPlay(trackId, title, artist) {
+      stopPauseFade();
+      setPauseFadeBlink(null);
       pushHistory();
       currentTrackId = trackId;
       activeAudio.src = streamUrl(trackId);
@@ -277,6 +334,13 @@
      * skipAdvance=true (Zurueck-Button): der bisherige Track gilt nicht als
      * "durchgespielt" und bleibt unangetastet in der Playlist stehen. */
     function beginCrossfade(next, skipAdvance) {
+      // Ein evtl. laufender Pause-Fade wuerde sich mit der Crossfade-Lautst-
+      // aerkesteuerung ueberschneiden (beide schreiben auf activeAudio.volume)
+      // - Kontrolle sauber uebernehmen statt beide gegeneinander laufen zu
+      // lassen.
+      stopPauseFade();
+      setPauseFadeBlink(null);
+      activeAudio.volume = 1;
       crossfading = true;
       crossfadeTargetTrackId = next.track_id;
       updateCrossfadeRowClass();
@@ -357,7 +421,22 @@
     /* -- Steuerelemente: wirken immer auf das gerade aktive <audio>-Element -- */
     if (playBtn) {
       playBtn.addEventListener('click', function () {
-        if (activeAudio.paused) { activeAudio.play(); } else { activeAudio.pause(); }
+        // Waehrend eines Crossfades steuern bereits beide <audio>-Elemente
+        // gemeinsam die Lautstaerke - ein Pause-Fade wuerde sich damit
+        // ueberschneiden, siehe beginCrossfade().
+        if (crossfading) return;
+        if (activeAudio.paused) {
+          setPauseFadeBlink(null);
+          activeAudio.play().catch(function () {});
+          fadeVolume(activeAudio, 0, 1, PAUSE_FADE_MS);
+        } else {
+          setPauseFadeBlink(currentTrackId);
+          fadeVolume(activeAudio, activeAudio.volume, 0, PAUSE_FADE_MS, function () {
+            activeAudio.pause();
+            activeAudio.volume = 1;
+            setPauseFadeBlink(null);
+          });
+        }
       });
     }
     if (prevBtn) prevBtn.addEventListener('click', goToPrevious);
@@ -498,7 +577,8 @@
         var isCurrent = it.track_id === currentTrackId;
         var isNext = next && next.id === it.id;
         var isCrossfadingIn = crossfadeTargetTrackId !== null && it.track_id === crossfadeTargetTrackId;
-        html += '<div class="app-request-item app-playlist-item' + (isCrossfadingIn ? ' is-crossfading-in' : '') + '" draggable="true" data-id="' + it.id + '" data-track-id="' + it.track_id + '">' +
+        var isPauseFading = pauseFadeTrackId !== null && it.track_id === pauseFadeTrackId;
+        html += '<div class="app-request-item app-playlist-item' + (isCrossfadingIn ? ' is-crossfading-in' : '') + (isPauseFading ? ' is-pause-fading' : '') + '" draggable="true" data-id="' + it.id + '" data-track-id="' + it.track_id + '">' +
           '<div class="app-playlist-item__countdown"></div>' +
           '<div>' +
             '<div style="font-weight:600;">' + escapeHtml(it.title || '(ohne Titel)') + (isCurrent ? ' <span class="pnk-text-muted">▶ läuft</span>' : '') + '</div>' +
