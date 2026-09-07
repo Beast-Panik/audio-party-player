@@ -20,7 +20,7 @@ function render_page(string $title, string $body): void
         . '<link rel="stylesheet" href="assets/css/app.css">'
         . '</head><body class="pnk-app app-login-wrap" style="display:flex; align-items:flex-start; padding:40px 16px;">'
         . '<div class="pnk-card pnk-card--raised" style="max-width:520px; width:100%; margin:0 auto;">'
-        . '<div class="pnk-card__header"><span class="pnk-card__title">Party Player - pan1k.de Einrichtung</span></div>'
+        . '<div class="pnk-card__header"><span class="pnk-card__title">Party Player - Einrichtung</span></div>'
         . $body
         . '</div></body></html>';
 }
@@ -50,7 +50,7 @@ if (!Config::isInstalled()) {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $driver = ($_POST['driver'] ?? 'sqlite') === 'mysql' ? 'mysql' : 'sqlite';
         $appUrl = rtrim(trim($_POST['app_url'] ?? $detectedBase), '/');
-        $appName = trim($_POST['app_name'] ?? 'Party Player - pan1k.de') ?: 'Party Player - pan1k.de';
+        $appName = trim($_POST['app_name'] ?? 'Party Player') ?: 'Party Player';
 
         $mysql = [
             'host' => trim($_POST['mysql_host'] ?? 'localhost'),
@@ -119,7 +119,7 @@ if (!Config::isInstalled()) {
     }
 
     $body .= '<form method="post" action="install.php" id="install-form">';
-    $body .= field('Party-/App-Name', 'app_name', 'Party Player - pan1k.de');
+    $body .= field('Party-/App-Name', 'app_name', 'Party Player');
     $body .= field('Basis-URL dieser Installation', 'app_url', $detectedBase);
     $body .= '<p class="pnk-text-muted" style="font-size:12px; margin:-6px 0 12px;">Ohne abschliessenden Slash, z.B. https://party.example.de oder http://localhost:8000 fuer lokale Tests.</p>';
 
@@ -233,7 +233,7 @@ if (Database::needsUpdate()) {
         exit;
     }
 
-    $body = '<p class="pnk-text-muted">Diese Version von Party Player - pan1k.de braucht ein paar Anpassungen an der Datenbank, bevor es weitergeht.</p>';
+    $body = '<p class="pnk-text-muted">Diese Version von Party Player braucht ein paar Anpassungen an der Datenbank, bevor es weitergeht.</p>';
     if ($error) {
         $body .= '<div class="pnk-alert pnk-alert--danger" style="margin-bottom:16px;">' . htmlspecialchars($error, ENT_QUOTES) . '</div>';
     }
@@ -249,5 +249,5 @@ if (Database::needsUpdate()) {
 // ---------------------------------------------------------------------
 // Bereits vollstaendig eingerichtet
 // ---------------------------------------------------------------------
-render_page('Fertig', '<div class="pnk-alert pnk-alert--success" style="margin-bottom:16px;">Party Player - pan1k.de ist bereits eingerichtet.</div>'
+render_page('Fertig', '<div class="pnk-alert pnk-alert--success" style="margin-bottom:16px;">Party Player ist bereits eingerichtet.</div>'
     . '<a class="pnk-btn pnk-btn--primary" style="width:100%; display:block; text-align:center;" href="login.php">Zur Anmeldung</a>');

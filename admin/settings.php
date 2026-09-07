@@ -192,7 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$appName = $settings->get('app_name', 'Party Player - pan1k.de');
+$appName = $settings->get('app_name', 'Party Player');
 $requestUrlOverride = $settings->get('request_url_override', '');
 $displayTheme = $settings->get('display_theme', 'dark');
 $qrLogoExt = $settings->get('qr_logo_ext', '');

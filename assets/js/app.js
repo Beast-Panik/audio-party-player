@@ -923,16 +923,16 @@
         .then(function (j) { renderTracks(j.tracks || [], j.count); });
     }
 
+    var jumpBarApi = initJumpBar(jumpBar, function (ch) {
+      searchInput.value = '';
+      loadTracks('', ch);
+    });
     searchInput.addEventListener('input', function () {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(function () {
-        if (jumpBar) jumpBar.querySelectorAll('.app-jumpbar__btn').forEach(function (b) { b.classList.remove('is-active'); });
+        if (jumpBarApi) jumpBarApi.clear();
         loadTracks(searchInput.value);
       }, 120);
-    });
-    initJumpBar(jumpBar, function (ch) {
-      searchInput.value = '';
-      loadTracks('', ch);
     });
     loadTracks('');
   }
@@ -942,28 +942,43 @@
    * Gaeste-Suche request.js) - springt per starts_with-Parameter (siehe
    * api/tracks.php) direkt zu Titeln, die mit dem gewaehlten Buchstaben/der
    * Zahl beginnen. Erneuter Klick auf den aktiven Buchstaben hebt den
-   * Filter wieder auf (Callback wird dann mit null aufgerufen).
+   * Filter wieder auf (Callback wird dann mit null aufgerufen). Auf
+   * schmalen Bildschirmen wird per CSS statt der Button-Reihe ein
+   * kompaktes <select> angezeigt (beide Elemente werden immer gerendert
+   * und bleiben ueber setActive() synchron).
    * ================================================================== */
   var JUMP_BAR_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
   function initJumpBar(container, onPick) {
-    if (!container) return;
-    var html = '';
+    if (!container) return null;
+    var selectHtml = '<option value="">A-Z / 0-9</option>';
+    var btnHtml = '';
     JUMP_BAR_CHARS.forEach(function (ch) {
-      html += '<button type="button" class="app-jumpbar__btn" data-ch="' + ch + '">' + ch + '</button>';
+      selectHtml += '<option value="' + ch + '">' + ch + '</option>';
+      btnHtml += '<button type="button" class="app-jumpbar__btn" data-ch="' + ch + '">' + ch + '</button>';
     });
-    container.innerHTML = html;
+    container.innerHTML =
+      '<select class="app-jumpbar__select" aria-label="Zu Buchstabe oder Zahl springen">' + selectHtml + '</select>' +
+      '<div class="app-jumpbar__buttons">' + btnHtml + '</div>';
+    var select = container.querySelector('.app-jumpbar__select');
+    function setActive(ch) {
+      container.querySelectorAll('.app-jumpbar__btn').forEach(function (b) {
+        b.classList.toggle('is-active', b.getAttribute('data-ch') === ch);
+      });
+      select.value = ch || '';
+    }
     container.querySelectorAll('.app-jumpbar__btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        var wasActive = btn.classList.contains('is-active');
-        container.querySelectorAll('.app-jumpbar__btn').forEach(function (b) { b.classList.remove('is-active'); });
-        if (wasActive) {
-          onPick(null);
-        } else {
-          btn.classList.add('is-active');
-          onPick(btn.getAttribute('data-ch'));
-        }
+        var ch = btn.classList.contains('is-active') ? null : btn.getAttribute('data-ch');
+        setActive(ch);
+        onPick(ch);
       });
     });
+    select.addEventListener('change', function () {
+      var ch = select.value || null;
+      setActive(ch);
+      onPick(ch);
+    });
+    return { clear: function () { setActive(null); } };
   }
 
   /* ================================================================== *

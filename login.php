@@ -32,7 +32,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 }
 
-$appName = (new SettingRepository())->get('app_name', 'Party Player - pan1k.de');
+$appName = (new SettingRepository())->get('app_name', 'Party Player');
 ?>
 <!DOCTYPE html>
 <html lang="de">

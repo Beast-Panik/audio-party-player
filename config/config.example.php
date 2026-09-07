@@ -1,6 +1,6 @@
 <?php
 /**
- * Party Player - pan1k.de - Konfiguration
+ * Party Player - Konfiguration
  *
  * Diese Datei wird normalerweise automatisch von install.php erzeugt
  * (Kopie dieser Vorlage nach config/config.php mit deinen Werten).
@@ -14,7 +14,7 @@ return [
     // den QR-Code der Wunsch-Seite verwendet. Ohne abschliessenden Slash.
     'app_url' => 'http://localhost:8000',
 
-    'app_name' => 'Party Player - pan1k.de',
+    'app_name' => 'Party Player',
 
     // 'sqlite' (Standard, keine Einrichtung noetig) oder 'mysql'
     'db' => [

@@ -17,7 +17,7 @@ if ($settings->get('app_live', '1') === '0') {
     require __DIR__ . '/templates/offline.php';
     exit;
 }
-$appName = $settings->get('app_name', 'Party Player - pan1k.de');
+$appName = $settings->get('app_name', 'Party Player');
 $displayTheme = $settings->get('display_theme', 'dark') === 'light' ? 'light' : 'dark';
 ?>
 <!DOCTYPE html>

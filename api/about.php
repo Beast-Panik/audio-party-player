@@ -14,7 +14,7 @@ use App\Repositories\SettingRepository;
 header('Content-Type: application/json; charset=utf-8');
 Auth::requireLoginApi();
 
-$appName = (new SettingRepository())->get('app_name', 'Party Player - pan1k.de');
+$appName = (new SettingRepository())->get('app_name', 'Party Player');
 
 echo json_encode([
     'app_name' => $appName,

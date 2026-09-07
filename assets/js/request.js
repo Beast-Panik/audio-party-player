@@ -209,27 +209,42 @@
 
   /* A-Z/0-9-Sprungleiste - identisches Verhalten wie initJumpBar() in
    * assets/js/app.js (Bibliothek), hier separat gehalten, da beide Seiten
-   * unabhaengige Skripte ohne gemeinsames Modul-System sind. */
+   * unabhaengige Skripte ohne gemeinsames Modul-System sind. Auf schmalen
+   * Bildschirmen wird per CSS statt der Button-Reihe ein kompaktes
+   * <select> angezeigt (beide Elemente werden immer gerendert und bleiben
+   * ueber setActive() synchron). */
   var JUMP_BAR_CHARS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'.split('');
   function initJumpBar(container, onPick) {
-    if (!container) return;
-    var html = '';
+    if (!container) return null;
+    var selectHtml = '<option value="">A-Z / 0-9</option>';
+    var btnHtml = '';
     JUMP_BAR_CHARS.forEach(function (ch) {
-      html += '<button type="button" class="app-jumpbar__btn" data-ch="' + ch + '">' + ch + '</button>';
+      selectHtml += '<option value="' + ch + '">' + ch + '</option>';
+      btnHtml += '<button type="button" class="app-jumpbar__btn" data-ch="' + ch + '">' + ch + '</button>';
     });
-    container.innerHTML = html;
+    container.innerHTML =
+      '<select class="app-jumpbar__select" aria-label="Zu Buchstabe oder Zahl springen">' + selectHtml + '</select>' +
+      '<div class="app-jumpbar__buttons">' + btnHtml + '</div>';
+    var select = container.querySelector('.app-jumpbar__select');
+    function setActive(ch) {
+      container.querySelectorAll('.app-jumpbar__btn').forEach(function (b) {
+        b.classList.toggle('is-active', b.getAttribute('data-ch') === ch);
+      });
+      select.value = ch || '';
+    }
     container.querySelectorAll('.app-jumpbar__btn').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        var wasActive = btn.classList.contains('is-active');
-        container.querySelectorAll('.app-jumpbar__btn').forEach(function (b) { b.classList.remove('is-active'); });
-        if (wasActive) {
-          onPick(null);
-        } else {
-          btn.classList.add('is-active');
-          onPick(btn.getAttribute('data-ch'));
-        }
+        var ch = btn.classList.contains('is-active') ? null : btn.getAttribute('data-ch');
+        setActive(ch);
+        onPick(ch);
       });
     });
+    select.addEventListener('change', function () {
+      var ch = select.value || null;
+      setActive(ch);
+      onPick(ch);
+    });
+    return { clear: function () { setActive(null); } };
   }
 
   function renderResults(tracks) {
@@ -288,19 +303,19 @@
       .then(function (j) { renderResults(j.tracks || []); });
   }
 
+  var jumpBarApi = initJumpBar(jumpBarEl, function (ch) {
+    if (searchInputEl) searchInputEl.value = '';
+    search('', ch);
+  });
   if (searchInputEl) {
     searchInputEl.addEventListener('input', function () {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(function () {
-        if (jumpBarEl) jumpBarEl.querySelectorAll('.app-jumpbar__btn').forEach(function (b) { b.classList.remove('is-active'); });
+        if (jumpBarApi) jumpBarApi.clear();
         search(searchInputEl.value);
       }, 120);
     });
   }
-  initJumpBar(jumpBarEl, function (ch) {
-    if (searchInputEl) searchInputEl.value = '';
-    search('', ch);
-  });
 
   // Immer 40 Songs als Inspiration zeigen, auch ohne Sucheingabe.
   search('');

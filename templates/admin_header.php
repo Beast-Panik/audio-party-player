@@ -12,7 +12,7 @@ use App\Repositories\SettingRepository;
 $pageTitle = $pageTitle ?? 'Party Player';
 $activeNav = $activeNav ?? '';
 $settingsRepo = new SettingRepository();
-$appName = $settingsRepo->get('app_name', 'Party Player - pan1k.de');
+$appName = $settingsRepo->get('app_name', 'Party Player');
 $hasLockPin = (bool) $settingsRepo->get('lock_pin_hash');
 $appLive = $settingsRepo->get('app_live', '1') !== '0';
 $tickerEnabled = $settingsRepo->get('ticker_enabled', '0') === '1';
