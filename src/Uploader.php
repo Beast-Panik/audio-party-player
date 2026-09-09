@@ -34,6 +34,48 @@ final class Uploader
         return $path;
     }
 
+    /** Absoluter Pfad zu einem (bereinigten) Unterordner im festen Upload-Root -
+     *  fuer die Zuordnung "ein Unterordner = eine eigene Bibliothek" (siehe
+     *  LibraryRepository::findOrCreateUploadLibrary()). */
+    public static function resolveFolderPath(string $subfolder): string
+    {
+        return self::libraryRoot() . self::sanitizeSubfolder($subfolder);
+    }
+
+    /** Anzeigename fuer die zu einem Unterordner gehoerende Bibliothek. */
+    public static function folderLabel(string $subfolder): string
+    {
+        $rel = ltrim(self::sanitizeSubfolder($subfolder), '/');
+        return $rel === '' ? 'Hauptordner' : $rel;
+    }
+
+    /** Prueft, ob ein Pfad innerhalb des festen Upload-Roots liegt - fuer
+     *  admin/library.php: nur bei automatisch angelegten Upload-Bibliotheken
+     *  (siehe LibraryRepository::findOrCreateUploadLibrary()) sollen beim
+     *  Entfernen auch die Dateien auf der Platte mitgeloescht werden, nicht
+     *  bei frei/manuell eingerichteten Bibliotheken (koennten auf beliebige,
+     *  vom Admin selbst per FTP gepflegte Ordner ausserhalb dieser App
+     *  zeigen - dort duerfen niemals automatisch Dateien geloescht werden). */
+    public static function isUnderRoot(string $path): bool
+    {
+        $root = realpath(self::libraryRoot());
+        $real = realpath($path);
+        if ($root === false || $real === false) {
+            return false;
+        }
+        return $real === $root || str_starts_with($real, rtrim($root, '/\\') . DIRECTORY_SEPARATOR);
+    }
+
+    /** Loescht einen Upload-Ordner komplett samt Inhalt - nur erlaubt
+     *  innerhalb des festen Upload-Roots (siehe isUnderRoot()). */
+    public static function deleteFolderTree(string $path): void
+    {
+        if (!self::isUnderRoot($path)) {
+            throw new \RuntimeException('Pfad liegt ausserhalb des Upload-Ordners.');
+        }
+        self::removeDir($path);
+    }
+
     private static function tmpRoot(): string
     {
         return dirname(__DIR__) . '/data/uploads/tmp';

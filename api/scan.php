@@ -17,6 +17,14 @@ if (!Csrf::check($token)) {
     exit;
 }
 
+// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php
+// und api/upload.php): ein "step" verarbeitet bis zu 25 Dateien (Metadaten/
+// Cover-Art) und kann spuerbar dauern - ohne das wuerde jede andere
+// parallele Anfrage derselben Sitzung (z.B. eine Bibliothek loeschen,
+// waehrend der automatische Scan nach einem Upload noch laeuft) darauf
+// warten muessen.
+session_write_close();
+
 $action = $input['action'] ?? '';
 $libraryId = (int) ($input['library_id'] ?? 0);
 

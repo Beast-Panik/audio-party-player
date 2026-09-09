@@ -47,11 +47,17 @@ try {
         echo json_encode(['ok' => true]);
         exit;
     }
-    // Legt die feste Upload-Bibliothek beim allerersten Upload automatisch
-    // an und liefert ihre ID, damit der Client danach den ganz normalen
-    // Scan-Ablauf (api/scan.php) fuer sie anstossen kann.
+    // Legt fuer den jeweils ausgewaehlten Unterordner beim ersten Upload
+    // automatisch eine eigene Bibliothek an (siehe LibraryRepository::
+    // findOrCreateUploadLibrary()) und liefert ihre ID, damit der Client
+    // danach den ganz normalen Scan-Ablauf (api/scan.php) fuer sie anstossen
+    // kann. Jeder Unterordner bekommt so seine eigene, separat loeschbare
+    // Bibliothek statt gebuendelt in einer gemeinsamen zu landen.
     if ($action === 'ensure_library') {
-        $lib = (new LibraryRepository())->findOrCreateUploadLibrary(Uploader::libraryRoot());
+        $subfolder = (string) ($_GET['subfolder'] ?? '');
+        $path = Uploader::resolveFolderPath($subfolder);
+        $name = Uploader::folderLabel($subfolder);
+        $lib = (new LibraryRepository())->findOrCreateUploadLibrary($path, $name);
         echo json_encode(['ok' => true, 'library_id' => (int) $lib['id']]);
         exit;
     }

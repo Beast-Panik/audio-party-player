@@ -1174,6 +1174,7 @@
    * ================================================================== */
   var UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024;
   var UPLOAD_MAX_CONCURRENT_CHUNKS = 3;
+  var UPLOAD_MAX_CONCURRENT_FILES = 4;
 
   function formatBytes(n) {
     if (n === null || n === undefined || isNaN(n)) return '';
@@ -1334,7 +1335,6 @@
     var folderSelect = card.querySelector('#upload-folder-select');
     var newFolderInput = card.querySelector('#upload-new-folder');
     var createFolderBtn = card.querySelector('#btn-create-folder');
-    var uploadLibraryId = null;
 
     function loadFolders(selectFolder) {
       if (!folderSelect) return;
@@ -1380,8 +1380,12 @@
 
       var subfolder = folderSelect ? folderSelect.value : '';
       list.style.display = 'grid';
-      var remaining = files.length;
-      files.forEach(function (file) {
+
+      // Zeilen fuer alle Dateien sofort anlegen (Warteschlange sichtbar),
+      // aber hochgeladen wird nur ein begrenztes Kontingent gleichzeitig
+      // (UPLOAD_MAX_CONCURRENT_FILES) - sonst starten bei vielen Dateien
+      // alle sofort parallel und ueberlasten schwaechere Shared-Hosts.
+      var queue = files.map(function (file) {
         var row = document.createElement('div');
         row.className = 'app-upload-item';
         row.innerHTML =
@@ -1391,9 +1395,29 @@
         var nameEl = row.querySelector('.app-upload-item__name');
         nameEl.textContent = file.name;
         nameEl.title = file.name;
+        var status = row.querySelector('.app-upload-item__status');
+        status.textContent = 'Wartet…';
+        list.appendChild(row);
+        return { file: file, row: row };
+      });
+
+      var remaining = queue.length;
+      var nextIndex = 0;
+      var active = 0;
+
+      function pump() {
+        while (active < UPLOAD_MAX_CONCURRENT_FILES && nextIndex < queue.length) {
+          startOne(queue[nextIndex]);
+          nextIndex++;
+        }
+      }
+
+      function startOne(item) {
+        active++;
+        var file = item.file, row = item.row;
         var fill = row.querySelector('.app-progressbar__fill');
         var status = row.querySelector('.app-upload-item__status');
-        list.appendChild(row);
+        status.textContent = formatBytes(0) + ' / ' + formatBytes(file.size);
 
         uploadOneFile(file, subfolder, function (loaded, total) {
           var pct = total ? Math.round((loaded / total) * 100) : 0;
@@ -1407,21 +1431,26 @@
           status.textContent = 'Fehler: ' + (err && err.message ? err.message : 'Upload fehlgeschlagen.');
           row.classList.add('is-error');
         }).then(function () {
+          active--;
           remaining--;
           if (remaining === 0) {
-            if (uploadLibraryId) {
-              runScan(uploadLibraryId, card, null);
-            } else {
-              uploadApiCall('ensure_library', {}).then(function (res) {
-                if (res.ok && res.body.library_id) {
-                  uploadLibraryId = res.body.library_id;
-                  runScan(uploadLibraryId, card, null);
-                }
-              });
-            }
+            // Jeder Ordner hat seine eigene Bibliothek (siehe LibraryRepository::
+            // findOrCreateUploadLibrary()) - deshalb hier bewusst jedes Mal frisch
+            // anhand des fuer diesen Batch gewaehlten Unterordners aufloesen,
+            // statt eine einmal ermittelte ID fuer alle folgenden Batches
+            // wiederzuverwenden (die koennten in einen anderen Ordner gehen).
+            uploadApiCall('ensure_library', { subfolder: subfolder }).then(function (res) {
+              if (res.ok && res.body.library_id) {
+                runScan(res.body.library_id, card, null);
+              }
+            });
+          } else {
+            pump();
           }
         });
-      });
+      }
+
+      pump();
     });
   }
 

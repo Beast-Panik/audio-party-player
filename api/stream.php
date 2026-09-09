@@ -10,6 +10,13 @@ use App\Repositories\TrackRepository;
 // Anlage/der DJ hoert ueber den Player, Gaeste wuenschen nur).
 Auth::requireLogin();
 
+// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php):
+// dieses Skript haelt die Verbindung ueber die komplette Uebertragungsdauer
+// des Tracks offen (Byte-fuer-Byte-Streaming weiter unten) - ohne das wuerde
+// die PHP-Standard-Session-Sperre fuer die gesamte Abspielzeit jede andere
+// parallele Anfrage derselben Sitzung blockieren (Navigation, API-Aufrufe).
+session_write_close();
+
 $trackId = (int) ($_GET['id'] ?? 0);
 $track = (new TrackRepository())->findById($trackId);
 if (!$track) {

@@ -10,6 +10,11 @@ use App\Repositories\TrackRepository;
 // Wunschseite. Liefert IMMER nur einen festen Ausschnitt aus der Mitte des
 // Tracks aus (Range-Header vom Client werden bewusst ignoriert), damit sich
 // darueber nicht die komplette Datei herunterladen laesst.
+
+// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php):
+// dieses Skript streamt Byte-fuer-Byte weiter unten.
+session_write_close();
+
 $trackId = (int) ($_GET['id'] ?? 0);
 $track = (new TrackRepository())->findById($trackId);
 if (!$track) {

@@ -6,6 +6,7 @@ use App\Auth;
 use App\Csrf;
 use App\PlayerSession;
 use App\Repositories\LibraryRepository;
+use App\Uploader;
 use App\Util;
 
 Auth::requireLogin();
@@ -32,7 +33,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $success = 'Bibliothek angelegt. Jetzt einen Scan starten.';
         }
     } elseif ($action === 'delete') {
-        $repo->delete((int) $_POST['id']);
+        $id = (int) $_POST['id'];
+        $lib = $repo->findById($id);
+        $repo->delete($id);
+        // Nur bei automatisch angelegten Upload-Ordnern (siehe Uploader::
+        // resolveFolderPath()) auch die Dateien auf der Platte mitloeschen -
+        // bei frei/manuell eingerichteten Bibliotheken koennte der Pfad auf
+        // beliebige, vom Admin selbst gepflegte Ordner ausserhalb dieser App
+        // zeigen und darf dort niemals angetastet werden.
+        if ($lib && Uploader::isUnderRoot($lib['path'])) {
+            Uploader::deleteFolderTree($lib['path']);
+        }
         $success = 'Bibliothek entfernt.';
     } elseif ($action === 'update') {
         $id = (int) $_POST['id'];
@@ -127,6 +138,7 @@ require __DIR__ . '/../templates/admin_header.php';
   <div class="pnk-card"><div class="app-empty">Noch keine Bibliothek angelegt.</div></div>
 <?php else: ?>
   <?php foreach ($libraries as $lib): ?>
+  <?php $isUploadFolder = Uploader::isUnderRoot($lib['path']); ?>
   <div class="pnk-card" style="margin-bottom:16px;" data-library-id="<?= (int) $lib['id'] ?>">
     <div class="pnk-card__header">
       <span class="pnk-card__title"><?= Util::e($lib['name']) ?></span>
@@ -144,7 +156,10 @@ require __DIR__ . '/../templates/admin_header.php';
 
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       <button class="pnk-btn pnk-btn--primary btn-scan" type="button" data-library-id="<?= (int) $lib['id'] ?>">Scan starten</button>
-      <form method="post" action="<?= app_url('admin/library.php') ?>" onsubmit="return confirm('Bibliothek inkl. aller zugehoerigen Songs wirklich entfernen? Dateien auf der Platte bleiben unberuehrt.');" style="display:inline;">
+      <?php $confirmMsg = $isUploadFolder
+        ? 'Diesen hochgeladenen Ordner wirklich entfernen? Alle zugehoerigen Songs UND die Dateien auf der Platte werden geloescht.'
+        : 'Bibliothek inkl. aller zugehoerigen Songs wirklich entfernen? Dateien auf der Platte bleiben unberuehrt.'; ?>
+      <form method="post" action="<?= app_url('admin/library.php') ?>" onsubmit="return confirm(<?= json_encode($confirmMsg, JSON_UNESCAPED_UNICODE | JSON_HEX_APOS | JSON_HEX_QUOT) ?>);" style="display:inline;">
         <?= Csrf::field() ?>
         <input type="hidden" name="action" value="delete">
         <input type="hidden" name="id" value="<?= (int) $lib['id'] ?>">

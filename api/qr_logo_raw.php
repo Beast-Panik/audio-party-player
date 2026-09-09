@@ -15,6 +15,9 @@ use App\Repositories\SettingRepository;
  */
 Auth::requireLoginApi();
 
+// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php).
+session_write_close();
+
 $settings = new SettingRepository();
 $logoExt = $settings->get('qr_logo_ext', '');
 $logoPath = $logoExt !== '' ? dirname(__DIR__) . '/data/qr_logo.' . $logoExt : null;

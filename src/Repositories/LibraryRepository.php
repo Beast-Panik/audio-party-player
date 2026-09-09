@@ -28,16 +28,27 @@ final class LibraryRepository
         return $row ?: null;
     }
 
-    /** Fuer den festen Upload-Zielordner (siehe src/Uploader.php): legt die
-     *  Bibliothek beim allerersten Upload automatisch an, statt eine manuelle
-     *  Einrichtung durch den Admin zu verlangen. */
-    public function findOrCreateUploadLibrary(string $path): array
+    /** Fuer Upload-Zielordner (siehe src/Uploader.php): legt fuer jeden
+     *  Unterordner, in den tatsaechlich hochgeladen wird, automatisch eine
+     *  eigene, nicht-rekursive Bibliothek an (statt alle Uploads in einer
+     *  gemeinsamen Bibliothek zu buendeln) - so bleibt jeder Ordner separat
+     *  im "Bibliotheken"-Bereich sicht- und loeschbar. Nicht-rekursiv, damit
+     *  sich verschachtelte Unterordner nicht gegenseitig ueberlappen (jeder
+     *  bekommt seine eigene Bibliothek). Eine bereits vorhandene Bibliothek
+     *  auf denselben Pfad (z.B. aus einer frueheren Version mit rekursivem
+     *  Sammel-Ordner) wird dabei automatisch auf nicht-rekursiv umgestellt.
+     */
+    public function findOrCreateUploadLibrary(string $path, string $name): array
     {
         $existing = $this->findByPath($path);
         if ($existing) {
+            if ((int) $existing['recursive'] !== 0) {
+                $this->update((int) $existing['id'], $existing['name'], $path, false);
+                $existing = $this->findById((int) $existing['id']);
+            }
             return $existing;
         }
-        $id = $this->create('Hochgeladene Musik', $path, true);
+        $id = $this->create($name, $path, false);
         return $this->findById($id);
     }
 

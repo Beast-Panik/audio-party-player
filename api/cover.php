@@ -6,6 +6,12 @@ use App\Repositories\TrackRepository;
 
 // Oeffentlich (kein Login) - Cover-Bilder werden auch auf der Gaeste-
 // Wunschseite gebraucht und sind keine sensiblen Daten.
+
+// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php):
+// die Bibliothek/Suche laedt oft viele Cover-Bilder parallel - ohne das
+// wuerde jede dieser Anfragen auf die vorherige derselben Sitzung warten.
+session_write_close();
+
 $trackId = (int) ($_GET['id'] ?? 0);
 $track = (new TrackRepository())->findById($trackId);
 
