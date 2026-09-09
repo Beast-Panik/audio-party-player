@@ -224,12 +224,6 @@ if (!function_exists('settings_accordion_open')) {
 $pageTitle = 'Einstellungen';
 $activeNav = 'settings';
 require __DIR__ . '/../templates/admin_header.php';
-// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php):
-// erst NACH admin_header.php, da dessen Sidebar (Csrf::field()) bei der
-// allerersten Anfrage einer Sitzung noch ein frisches CSRF-Token in
-// $_SESSION schreibt - vorher geschlossen wuerde dieser Schreibvorgang
-// verworfen und nie gespeichert werden.
-session_write_close();
 ?>
 
 <h2 style="margin-top:0;">Einstellungen</h2>

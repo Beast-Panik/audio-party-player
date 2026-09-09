@@ -12,10 +12,6 @@ use App\Auth;
 header('Content-Type: application/json; charset=utf-8');
 Auth::requireLoginApi();
 
-// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php):
-// scandir() ueber ggf. grosse Verzeichnisse kann spuerbar dauern.
-session_write_close();
-
 function json_fail(int $code, string $message): void
 {
     http_response_code($code);

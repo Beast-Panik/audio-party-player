@@ -22,12 +22,6 @@ $pageTitle = 'Musikwunsch';
 $csrfToken = Csrf::token();
 $previewSeconds = (int) $settings->get('preview_seconds', '20');
 
-// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php):
-// erst NACH Csrf::token(), da das bei der allerersten Anfrage eines Gastes
-// noch ein frisches CSRF-Token in $_SESSION schreibt - vorher geschlossen
-// wuerde dieser Schreibvorgang verworfen und nie gespeichert werden.
-session_write_close();
-
 require __DIR__ . '/templates/public_header.php';
 ?>
 <script>

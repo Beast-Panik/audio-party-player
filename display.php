@@ -10,9 +10,6 @@ use App\Repositories\SettingRepository;
 // fuer die interaktive Wunsch-Seite gedacht). Theme kommt fest aus den
 // Einstellungen (siehe admin/settings.php, Accordion "Wunsch-Seite & QR-Code"),
 // da niemand einen Beamer manuell umschaltet.
-// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php).
-session_write_close();
-
 $settings = new SettingRepository();
 // Party ist "offline" geschaltet (siehe api/live_status.php, Sidebar-
 // Schalter) - Seite zeigt dann nur noch eine leere "Offline"-Anzeige.

@@ -10,9 +10,6 @@ use App\Repositories\TrackReactionRepository;
 // sowie Ticker + "Als naechstes" auf der Anzeige-Seite (display.php).
 header('Content-Type: application/json; charset=utf-8');
 
-// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php).
-session_write_close();
-
 $settings = new SettingRepository();
 $trackId = (int) $settings->get('now_playing_track_id', '0');
 $next = (new PlaylistRepository())->nextAfter($trackId ?: null);

@@ -6,11 +6,6 @@ use App\Config;
 use App\QrCode;
 use App\Repositories\SettingRepository;
 
-// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php):
-// wird auch als <img src> auf der oeffentlichen Anzeige-Seite (display.php)
-// eingebettet und kann daher oefter parallel angefragt werden.
-session_write_close();
-
 $settings = new SettingRepository();
 $override = $settings->get('request_url_override', '');
 $requestUrl = ($override ?: rtrim(Config::get('app_url', ''), '/')) . app_url('request.php');

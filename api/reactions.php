@@ -12,9 +12,6 @@ use App\Repositories\TrackRepository;
 // auf den aktuell laufenden Track, siehe TrackReactionRepository.
 header('Content-Type: application/json; charset=utf-8');
 
-// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php).
-session_write_close();
-
 function json_fail(int $code, string $message): void
 {
     http_response_code($code);
