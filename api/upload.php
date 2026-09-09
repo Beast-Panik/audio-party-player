@@ -16,6 +16,13 @@ if (!Csrf::check($_SERVER['HTTP_X_CSRF_TOKEN'] ?? null)) {
     exit;
 }
 
+// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php):
+// Chunk-Schreibvorgaenge koennen bei echten Uploads spuerbar dauern, ohne
+// das wuerde das PHP-Standard-Sessionhandling die Session-Datei fuer die
+// gesamte Dauer sperren und damit jede andere parallele Anfrage derselben
+// Sitzung (Navigation, weitere Chunks, andere API-Aufrufe) blockieren.
+session_write_close();
+
 $action = $_GET['action'] ?? '';
 $uploadId = (string) ($_GET['upload_id'] ?? '');
 

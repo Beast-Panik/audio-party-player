@@ -13,6 +13,13 @@ data/scanstate/*.json
 data/uploads/tmp/*
 !data/uploads/tmp/.htaccess
 
+# Hochgeladene Tracks (siehe src/Uploader.php) - der Ordner selbst wird
+# mitsamt .htaccess ausgeliefert, damit er nicht erst zur Laufzeit angelegt
+# werden muss (manche Hoster erlauben restriktiv nur Schreibzugriff
+# innerhalb bereits vorhandener Verzeichnisse, siehe README).
+data/uploads/library/*
+!data/uploads/library/.htaccess
+
 # Extrahierte Cover-Art (wird bei jedem Scan neu erzeugt)
 data/covers/*.jpg
 data/covers/*.png
