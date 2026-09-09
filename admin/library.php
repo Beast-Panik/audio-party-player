@@ -55,14 +55,46 @@ require __DIR__ . '/../templates/admin_header.php';
 
 <h2 style="margin-top:0;">Bibliothek</h2>
 <p class="pnk-text-muted" style="max-width:70ch;">
-  Lege hier die Verzeichnisse fest, in denen deine MP3-/FLAC-Dateien liegen
-  (einfach per FTP/Datei-Manager dorthin kopieren - ein Upload ueber diese
-  Seite ist nicht vorgesehen). Nach dem Anlegen einmal "Scan starten"
-  klicken, um Metadaten einzulesen.
+  Tracks entweder direkt ueber "Hochladen" unten in den festen Upload-Ordner
+  legen, oder per FTP/Datei-Manager in ein selbst verzeichnetes Verzeichnis
+  kopieren (siehe "Bibliotheken" weiter unten) und dort scannen.
 </p>
 
 <?php if ($error): ?><div class="pnk-alert pnk-alert--danger" style="margin-bottom:16px;"><?= Util::e($error) ?></div><?php endif; ?>
 <?php if ($success): ?><div class="pnk-alert pnk-alert--success" style="margin-bottom:16px;"><?= Util::e($success) ?></div><?php endif; ?>
+
+<div class="pnk-card" style="margin-bottom:20px;" id="upload-card">
+  <div class="pnk-card__header"><span class="pnk-card__title">Tracks hochladen</span></div>
+  <p class="pnk-text-muted" style="margin-top:0; font-size:13px;">
+    Landet in einem festen, sicheren Upload-Ordner auf dem Server (aus
+    Sicherheitsgruenden nicht frei waehlbar). Erst einen Ordner anlegen
+    (optional, z.B. nach Genre einsortiert - auch verschachtelt: unten
+    einen Ordner auswaehlen und darin einen weiteren anlegen), dann Dateien
+    in einen bestehenden Ordner hochladen - wird danach automatisch
+    gescannt.
+  </p>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:14px; padding-bottom:14px; border-bottom:1px solid var(--pnk-border);">
+    <input class="pnk-input" type="text" id="upload-new-folder" placeholder="Neuer (Unter-)Ordner, z.B. Rock" style="max-width:240px; flex:1;">
+    <button class="pnk-btn pnk-btn--ghost" id="btn-create-folder" type="button"><?= btn_icon_svg('folder') ?>Ordner anlegen</button>
+  </div>
+
+  <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:2px;">
+    <select class="pnk-input" id="upload-folder-select" style="max-width:240px; flex:1;">
+      <option value="">Hauptordner</option>
+    </select>
+    <button class="pnk-btn pnk-btn--primary btn-upload-tracks" type="button"><?= btn_icon_svg('upload') ?>Dateien wählen</button>
+    <input type="file" class="upload-file-input" accept=".mp3,.flac,audio/mpeg,audio/flac,audio/x-flac" multiple hidden>
+  </div>
+  <p class="pnk-text-muted" style="margin:2px 0 10px; font-size:12px;">
+    Neuer Ordner oben wird als Unterordner von hier ausgewaehltem Ordner angelegt (Hauptordner = oberste Ebene).
+  </p>
+  <div class="scan-progress" style="margin-bottom:8px; display:none;">
+    <div class="app-progressbar"><div class="app-progressbar__fill"></div></div>
+    <div class="pnk-text-muted scan-progress-label" style="font-size:12px; margin-top:4px;"></div>
+  </div>
+  <div class="app-upload-list" style="display:none;"></div>
+</div>
 
 <div class="pnk-card" style="margin-bottom:20px;">
   <div class="pnk-card__header"><span class="pnk-card__title">Neue Bibliothek anlegen</span></div>
@@ -90,6 +122,7 @@ require __DIR__ . '/../templates/admin_header.php';
   </form>
 </div>
 
+<h3 style="margin:24px 0 12px;">Bibliotheken</h3>
 <?php if (empty($libraries)): ?>
   <div class="pnk-card"><div class="app-empty">Noch keine Bibliothek angelegt.</div></div>
 <?php else: ?>

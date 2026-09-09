@@ -1104,53 +1104,321 @@
    * Scan-Steuerung (admin/library.php) - Elemente existieren nur dort und
    * werden bei jeder Soft-Navigation neu erzeugt, daher erneut aufrufbar.
    * ================================================================== */
+  /* runScan() ist von initScanButtons() ausgelagert, damit initUploadWidgets()
+     nach einem abgeschlossenen Upload denselben Scan-Ablauf (inkl. derselben
+     Fortschrittsanzeige) automatisch anstossen kann, ohne einen echten
+     Button-Klick zu simulieren. */
+  function runScan(libraryId, card, btn) {
+    var progressWrap = card.querySelector('.scan-progress');
+    var fill = card.querySelector('.app-progressbar__fill');
+    var label = card.querySelector('.scan-progress-label');
+    if (btn) btn.disabled = true;
+    progressWrap.style.display = 'block';
+    label.textContent = 'Starte Scan…';
+
+    postJson(api('api/scan.php'), { action: 'start', library_id: libraryId, csrf_token: CSRF }).then(function (res) {
+      if (!res.ok || res.body.error) {
+        label.textContent = 'Fehler: ' + (res.body.error || 'unbekannt');
+        if (btn) btn.disabled = false;
+        return;
+      }
+      var total = res.body.total;
+      if (total === 0) {
+        label.textContent = 'Keine MP3/FLAC-Dateien gefunden.';
+        if (btn) btn.disabled = false;
+        return;
+      }
+      step();
+
+      function step() {
+        postJson(api('api/scan.php'), { action: 'step', library_id: libraryId, csrf_token: CSRF }).then(function (res) {
+          if (!res.ok || res.body.error) {
+            label.textContent = 'Fehler: ' + (res.body.error || 'unbekannt');
+            if (btn) btn.disabled = false;
+            return;
+          }
+          var processed = res.body.processed, tot = res.body.total || total;
+          var pct = tot ? Math.round((processed / tot) * 100) : 100;
+          fill.style.width = pct + '%';
+          label.textContent = processed + ' / ' + tot + ' Dateien verarbeitet…';
+          if (res.body.done) {
+            var dupCount = res.body.duplicates || 0;
+            label.textContent = 'Fertig: ' + tot + ' Dateien verarbeitet.' +
+              (dupCount ? ' ' + dupCount + ' Dublette' + (dupCount === 1 ? '' : 'n') + ' (gleicher Titel+Interpret) uebersprungen.' : '');
+            if (btn) btn.disabled = false;
+            if (window.APP_SOFT_RELOAD) window.APP_SOFT_RELOAD();
+          } else {
+            step();
+          }
+        });
+      }
+    });
+  }
+
   function initScanButtons() {
     document.querySelectorAll('.btn-scan').forEach(function (btn) {
       btn.addEventListener('click', function () {
         var libraryId = btn.getAttribute('data-library-id');
         var card = btn.closest('.pnk-card[data-library-id]');
-        var progressWrap = card.querySelector('.scan-progress');
-        var fill = card.querySelector('.app-progressbar__fill');
-        var label = card.querySelector('.scan-progress-label');
-        btn.disabled = true;
-        progressWrap.style.display = 'block';
-        label.textContent = 'Starte Scan…';
+        runScan(libraryId, card, btn);
+      });
+    });
+  }
 
-        postJson(api('api/scan.php'), { action: 'start', library_id: libraryId, csrf_token: CSRF }).then(function (res) {
+  /* ================================================================== *
+   * Track-Upload (admin/library.php) - laedt ausgewaehlte MP3/FLAC-Dateien
+   * in Chunks hoch (roher Request-Body statt multipart, siehe
+   * src/Uploader.php), mehrere Chunks gleichzeitig pro Datei fuer Tempo.
+   * Nach Abschluss aller Dateien einer Bibliothek wird automatisch derselbe
+   * Scan-Ablauf wie beim "Scan starten"-Button angestossen.
+   * ================================================================== */
+  var UPLOAD_CHUNK_SIZE = 4 * 1024 * 1024;
+  var UPLOAD_MAX_CONCURRENT_CHUNKS = 3;
+
+  function formatBytes(n) {
+    if (n === null || n === undefined || isNaN(n)) return '';
+    var units = ['B', 'KB', 'MB', 'GB'];
+    var i = 0;
+    var v = n;
+    while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+    return (i === 0 ? String(v) : v.toFixed(1)) + ' ' + units[i];
+  }
+
+  function makeUploadId() {
+    if (window.crypto && crypto.randomUUID) return crypto.randomUUID().replace(/-/g, '');
+    var s = '';
+    for (var i = 0; i < 32; i++) s += Math.floor(Math.random() * 16).toString(16);
+    return s;
+  }
+
+  function sendChunk(uploadId, index, blob, onProgress) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      var url = api('api/upload.php?action=chunk' +
+        '&upload_id=' + encodeURIComponent(uploadId) + '&chunk_index=' + index);
+      xhr.open('POST', url);
+      xhr.setRequestHeader('X-CSRF-Token', CSRF);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.upload.addEventListener('progress', function (e) {
+        if (e.lengthComputable) onProgress(e.loaded);
+      });
+      xhr.onload = function () {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            var body = JSON.parse(xhr.responseText);
+            if (body.ok) { resolve(); return; }
+            reject(new Error(body.error || 'Chunk-Fehler.'));
+          } catch (e) { reject(new Error('Ungueltige Serverantwort.')); }
+          return;
+        }
+        reject(new Error('Chunk-Upload fehlgeschlagen (' + xhr.status + ').'));
+      };
+      xhr.onerror = function () { reject(new Error('Netzwerkfehler beim Hochladen.')); };
+      xhr.send(blob);
+    });
+  }
+
+  function completeUpload(uploadId, totalChunks, filename, subfolder) {
+    return new Promise(function (resolve, reject) {
+      var xhr = new XMLHttpRequest();
+      var url = api('api/upload.php?action=complete' +
+        '&upload_id=' + encodeURIComponent(uploadId) + '&total_chunks=' + totalChunks +
+        '&filename=' + encodeURIComponent(filename) + '&subfolder=' + encodeURIComponent(subfolder || ''));
+      xhr.open('POST', url);
+      xhr.setRequestHeader('X-CSRF-Token', CSRF);
+      xhr.onload = function () {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            var body = JSON.parse(xhr.responseText);
+            if (body.ok) { resolve(body); return; }
+            reject(new Error(body.error || 'Fehler beim Abschliessen.'));
+          } catch (e) { reject(new Error('Ungueltige Serverantwort.')); }
+          return;
+        }
+        reject(new Error('Abschluss fehlgeschlagen (' + xhr.status + ').'));
+      };
+      xhr.onerror = function () { reject(new Error('Netzwerkfehler.')); };
+      xhr.send();
+    });
+  }
+
+  /* Laedt eine einzelne Datei hoch: bis zu UPLOAD_MAX_CONCURRENT_CHUNKS
+     Chunks gleichzeitig ueber einen kleinen Warteschlangen-"Pump", damit
+     wirklich mehrere Verbindungen parallel laufen statt Chunk-fuer-Chunk
+     sequentiell. onProgress bekommt bytegenaue geladene/Gesamt-Werte. */
+  function uploadOneFile(file, subfolder, onProgress) {
+    var uploadId = makeUploadId();
+    var totalChunks = Math.max(1, Math.ceil(file.size / UPLOAD_CHUNK_SIZE));
+    var loadedByChunk = new Array(totalChunks).fill(0);
+    var nextIndex = 0;
+    var active = 0;
+    var failed = false;
+
+    function reportProgress() {
+      var loaded = 0;
+      for (var i = 0; i < loadedByChunk.length; i++) loaded += loadedByChunk[i];
+      onProgress(loaded, file.size);
+    }
+
+    return new Promise(function (resolve, reject) {
+      function pump() {
+        if (failed) return;
+        if (nextIndex >= totalChunks) {
+          if (active === 0) finish();
+          return;
+        }
+        while (active < UPLOAD_MAX_CONCURRENT_CHUNKS && nextIndex < totalChunks) {
+          uploadChunk(nextIndex);
+          nextIndex++;
+        }
+      }
+
+      function uploadChunk(index) {
+        active++;
+        var start = index * UPLOAD_CHUNK_SIZE;
+        var blob = file.slice(start, Math.min(start + UPLOAD_CHUNK_SIZE, file.size));
+        sendChunk(uploadId, index, blob, function (loaded) {
+          loadedByChunk[index] = loaded;
+          reportProgress();
+        }).then(function () {
+          loadedByChunk[index] = blob.size;
+          reportProgress();
+          active--;
+          pump();
+        }).catch(function (err) {
+          failed = true;
+          reject(err);
+        });
+      }
+
+      function finish() {
+        completeUpload(uploadId, totalChunks, file.name, subfolder).then(resolve).catch(reject);
+      }
+
+      pump();
+    });
+  }
+
+  /* Der Upload-Zielordner ist serverseitig fest verdrahtet (siehe
+     src/Uploader.php) - der Client waehlt hier keinen Pfad, sondern nur
+     optional einen Unterordner darin. library_id fuer den Auto-Scan danach
+     wird bei Bedarf per api/upload.php?action=ensure_library nachgefragt
+     (legt die feste Upload-Bibliothek beim allerersten Mal automatisch an). */
+  /* Kleiner Helfer fuer die Nicht-Chunk-Aktionen von api/upload.php
+     (ensure_library/create_folder/list_folders) - immer per Query-String
+     statt JSON-Body, damit derselbe simple $_GET-Parser wie fuer chunk/
+     complete auf dem Server ausreicht. */
+  function uploadApiCall(action, params) {
+    var qs = 'action=' + encodeURIComponent(action);
+    Object.keys(params || {}).forEach(function (k) {
+      qs += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k]);
+    });
+    return fetch(api('api/upload.php?' + qs), {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': CSRF },
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); });
+  }
+
+  /* Ordner-Anlegen ist bewusst ein eigener, dem Upload vorgelagerter
+     Schritt: erst legt der Admin (bei Bedarf) einen Ordner an, danach
+     waehlt er beim Hochladen aus den bestehenden Ordnern - so lassen sich
+     spaeter jederzeit weitere Dateien in denselben Ordner nachreichen,
+     ohne den Namen erneut abtippen zu muessen. */
+  function initUploadWidgets() {
+    var card = document.getElementById('upload-card');
+    if (!card) return;
+
+    var btn = card.querySelector('.btn-upload-tracks');
+    var input = card.querySelector('.upload-file-input');
+    var list = card.querySelector('.app-upload-list');
+    var folderSelect = card.querySelector('#upload-folder-select');
+    var newFolderInput = card.querySelector('#upload-new-folder');
+    var createFolderBtn = card.querySelector('#btn-create-folder');
+    var uploadLibraryId = null;
+
+    function loadFolders(selectFolder) {
+      if (!folderSelect) return;
+      uploadApiCall('list_folders', {}).then(function (res) {
+        if (!res.ok || !res.body.folders) return;
+        var current = selectFolder !== undefined ? selectFolder : folderSelect.value;
+        folderSelect.innerHTML = '<option value="">Hauptordner</option>' +
+          res.body.folders.map(function (f) {
+            return '<option value="' + escapeHtml(f) + '">' + escapeHtml(f) + '</option>';
+          }).join('');
+        folderSelect.value = current;
+      });
+    }
+    loadFolders('');
+
+    if (createFolderBtn) {
+      createFolderBtn.addEventListener('click', function () {
+        var name = newFolderInput ? newFolderInput.value.trim() : '';
+        if (!name) return;
+        var parent = folderSelect ? folderSelect.value : '';
+        var subfolder = parent ? parent + '/' + name : name;
+        createFolderBtn.disabled = true;
+        uploadApiCall('create_folder', { subfolder: subfolder }).then(function (res) {
+          createFolderBtn.disabled = false;
           if (!res.ok || res.body.error) {
-            label.textContent = 'Fehler: ' + (res.body.error || 'unbekannt');
-            btn.disabled = false;
+            window.alert(res.body && res.body.error ? res.body.error : 'Ordner konnte nicht angelegt werden.');
             return;
           }
-          var total = res.body.total;
-          if (total === 0) {
-            label.textContent = 'Keine MP3/FLAC-Dateien gefunden.';
-            btn.disabled = false;
-            return;
-          }
-          step();
+          newFolderInput.value = '';
+          loadFolders(res.body.folder);
+        });
+      });
+    }
 
-          function step() {
-            postJson(api('api/scan.php'), { action: 'step', library_id: libraryId, csrf_token: CSRF }).then(function (res) {
-              if (!res.ok || res.body.error) {
-                label.textContent = 'Fehler: ' + (res.body.error || 'unbekannt');
-                btn.disabled = false;
-                return;
-              }
-              var processed = res.body.processed, tot = res.body.total || total;
-              var pct = tot ? Math.round((processed / tot) * 100) : 100;
-              fill.style.width = pct + '%';
-              label.textContent = processed + ' / ' + tot + ' Dateien verarbeitet…';
-              if (res.body.done) {
-                var dupCount = res.body.duplicates || 0;
-                label.textContent = 'Fertig: ' + tot + ' Dateien verarbeitet.' +
-                  (dupCount ? ' ' + dupCount + ' Dublette' + (dupCount === 1 ? '' : 'n') + ' (gleicher Titel+Interpret) uebersprungen.' : '');
-                btn.disabled = false;
-                if (window.APP_SOFT_RELOAD) window.APP_SOFT_RELOAD();
-              } else {
-                step();
-              }
-            });
+    btn.addEventListener('click', function () { input.click(); });
+
+    input.addEventListener('change', function () {
+      var files = Array.prototype.filter.call(input.files, function (f) {
+        return /\.(mp3|flac)$/i.test(f.name);
+      });
+      input.value = '';
+      if (!files.length) return;
+
+      var subfolder = folderSelect ? folderSelect.value : '';
+      list.style.display = 'grid';
+      var remaining = files.length;
+      files.forEach(function (file) {
+        var row = document.createElement('div');
+        row.className = 'app-upload-item';
+        row.innerHTML =
+          '<div class="app-upload-item__name"></div>' +
+          '<div class="app-progressbar app-upload-item__bar"><div class="app-progressbar__fill"></div></div>' +
+          '<div class="app-upload-item__status pnk-text-muted"></div>';
+        var nameEl = row.querySelector('.app-upload-item__name');
+        nameEl.textContent = file.name;
+        nameEl.title = file.name;
+        var fill = row.querySelector('.app-progressbar__fill');
+        var status = row.querySelector('.app-upload-item__status');
+        list.appendChild(row);
+
+        uploadOneFile(file, subfolder, function (loaded, total) {
+          var pct = total ? Math.round((loaded / total) * 100) : 0;
+          fill.style.width = pct + '%';
+          status.textContent = formatBytes(loaded) + ' / ' + formatBytes(total);
+        }).then(function () {
+          fill.style.width = '100%';
+          status.textContent = 'Fertig (' + formatBytes(file.size) + ')';
+          row.classList.add('is-done');
+        }).catch(function (err) {
+          status.textContent = 'Fehler: ' + (err && err.message ? err.message : 'Upload fehlgeschlagen.');
+          row.classList.add('is-error');
+        }).then(function () {
+          remaining--;
+          if (remaining === 0) {
+            if (uploadLibraryId) {
+              runScan(uploadLibraryId, card, null);
+            } else {
+              uploadApiCall('ensure_library', {}).then(function (res) {
+                if (res.ok && res.body.library_id) {
+                  uploadLibraryId = res.body.library_id;
+                  runScan(uploadLibraryId, card, null);
+                }
+              });
+            }
           }
         });
       });
@@ -1476,6 +1744,7 @@
     initTrackList();
     initRecentlyPlayed();
     initScanButtons();
+    initUploadWidgets();
     initFolderPicker();
     initQrLogoPreview();
     if (window.APP_INIT_AUTO_DJ_TOGGLE) window.APP_INIT_AUTO_DJ_TOGGLE();

@@ -20,6 +20,27 @@ final class LibraryRepository
         return $row ?: null;
     }
 
+    public function findByPath(string $path): ?array
+    {
+        $stmt = Database::get()->prepare('SELECT * FROM libraries WHERE path = ?');
+        $stmt->execute([$path]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    /** Fuer den festen Upload-Zielordner (siehe src/Uploader.php): legt die
+     *  Bibliothek beim allerersten Upload automatisch an, statt eine manuelle
+     *  Einrichtung durch den Admin zu verlangen. */
+    public function findOrCreateUploadLibrary(string $path): array
+    {
+        $existing = $this->findByPath($path);
+        if ($existing) {
+            return $existing;
+        }
+        $id = $this->create('Hochgeladene Musik', $path, true);
+        return $this->findById($id);
+    }
+
     public function create(string $name, string $path, bool $recursive = true): int
     {
         $stmt = Database::get()->prepare(

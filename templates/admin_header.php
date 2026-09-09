@@ -25,14 +25,14 @@ $playlistCountForNav = Auth::isLoggedIn() ? (new PlaylistRepository())->count() 
 // Bedienelemente eine zweite gleichzeitig eingeloggte Session zu sehen bekommt.
 $isSlave = Auth::isLoggedIn() && !PlayerSession::touch();
 
-if (!function_exists('nav_icon_svg')) {
+if (!function_exists('app_icon_paths')) {
     /**
-     * Einfarbige Menue-Icons (Strichzeichnung, "stroke=currentColor") statt
-     * bunter Emoji - die Farbe kommt ausschliesslich ueber CSS-Klassen aus
-     * den Design-Tokens (siehe .app-nav-icon--* in app.css), jedes Icon
-     * genau eine Farbe, nie mehrfarbig.
+     * Strichzeichnungs-Pfade fuer einfarbige Icons (stroke=currentColor)
+     * statt bunter Emoji - gemeinsame Quelle fuer die Sidebar-Navigation
+     * (nav_icon_svg) UND normale Buttons ausserhalb der Sidebar (btn_icon_svg),
+     * damit derselbe Strich-Stil ueberall im Adminbereich verwendet wird.
      */
-    function nav_icon_svg(string $name): string
+    function app_icon_paths(string $name): string
     {
         $icons = [
             'player' => '<path d="M4 14v-2a8 8 0 0 1 16 0v2"/><rect x="2" y="14" width="5" height="7" rx="2"/><rect x="17" y="14" width="5" height="7" rx="2"/>',
@@ -43,9 +43,28 @@ if (!function_exists('nav_icon_svg')) {
             'settings' => '<line x1="5" y1="4" x2="5" y2="20"/><circle cx="5" cy="9" r="2" fill="currentColor" stroke="none"/><line x1="12" y1="4" x2="12" y2="20"/><circle cx="12" cy="15" r="2" fill="currentColor" stroke="none"/><line x1="19" y1="4" x2="19" y2="20"/><circle cx="19" cy="7" r="2" fill="currentColor" stroke="none"/>',
             'lock' => '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
             'key' => '<circle cx="8" cy="14" r="4"/><path d="M11 11 20 2M17 5l2 2M14 8l2 2"/>',
+            'folder' => '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>',
+            'upload' => '<path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
         ];
-        $body = $icons[$name] ?? '';
-        return '<svg class="app-nav-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . $body . '</svg>';
+        return $icons[$name] ?? '';
+    }
+}
+
+if (!function_exists('nav_icon_svg')) {
+    function nav_icon_svg(string $name): string
+    {
+        return '<svg class="app-nav-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . app_icon_paths($name) . '</svg>';
+    }
+}
+
+if (!function_exists('btn_icon_svg')) {
+    /** Dieselben einfarbigen Strich-Icons wie in der Sidebar, aber fuer
+     *  normale Buttons ausserhalb der Navigation - Farbe kommt hier direkt
+     *  von der Textfarbe des jeweiligen Buttons (currentColor), keine
+     *  eigene Akzentfarbe wie bei .app-nav-icon--*. */
+    function btn_icon_svg(string $name): string
+    {
+        return '<svg class="app-btn-icon-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' . app_icon_paths($name) . '</svg>';
     }
 }
 

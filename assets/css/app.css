@@ -30,6 +30,13 @@
   height: 17px;
   display: block;
 }
+.app-btn-icon-svg {
+  width: 15px;
+  height: 15px;
+  display: inline-block;
+  vertical-align: -3px;
+  margin-right: 4px;
+}
 /* Einfarbige Menue-Icons - jede Farbe kommt direkt aus den Design-Tokens
    (panikdark.css), jedes Icon genau eine Farbe, nie mehrfarbig. Ueber
    currentColor auf dem SVG gesteuert (stroke bzw. die gefuellten Punkte
@@ -166,6 +173,39 @@
   width: 0%;
   transition: width 160ms ease;
 }
+
+.app-upload-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+}
+.app-upload-item {
+  padding: 5px 7px;
+  border: 1px solid var(--pnk-border);
+  border-radius: var(--pnk-radius-sm);
+  background: var(--pnk-surface-sunken);
+  font-size: 11px;
+  min-width: 0;
+}
+.app-upload-item__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-bottom: 3px;
+}
+.app-upload-item__bar { height: 3px; margin-bottom: 2px; }
+.app-upload-item__status {
+  color: var(--pnk-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 10px;
+}
+.app-upload-item.is-done .app-upload-item__bar .app-progressbar__fill { background: var(--pnk-success); }
+.app-upload-item.is-error .app-upload-item__bar .app-progressbar__fill { background: var(--pnk-danger); }
+.app-upload-item.is-error .app-upload-item__status { color: var(--pnk-danger); }
 
 .app-qr-box {
   display: flex;
