@@ -15,6 +15,13 @@ use App\Util;
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php):
+// Gast-Identifikation laeuft rein ueber ein Cookie (GuestIdentity), nicht
+// ueber $_SESSION - und die Admin-Aktionen unten (annehmen/ablehnen)
+// schreiben ebenfalls nicht in $_SESSION, duerfen also eine parallele
+// Anfrage derselben Admin-Sitzung nicht blockieren.
+session_write_close();
+
 function json_fail(int $code, string $message, array $extra = []): void
 {
     http_response_code($code);

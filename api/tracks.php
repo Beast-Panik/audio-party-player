@@ -8,6 +8,13 @@ use App\Repositories\TrackRepository;
 
 header('Content-Type: application/json; charset=utf-8');
 
+// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php
+// und api/stream.php): wird waehrend laufender Wiedergabe alle 8s per
+// initRecentlyPlayed() nachgefragt und darf eine parallele Anfrage
+// derselben Sitzung (z.B. api/stream.php beim Spulen im Slider) nicht
+// blockieren. Auth::requireLoginApi() liest $_SESSION nur, schreibt nicht.
+session_write_close();
+
 $repo = new TrackRepository();
 $settings = new SettingRepository();
 $lockHours = (int) $settings->get('recent_played_lock_hours', '4');
