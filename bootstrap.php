@@ -38,7 +38,7 @@ define('APP_BASE_PATH', app_base_path());
 
 // Wird im Sidebar-Footer angezeigt - bei jedem Release manuell auf den neuen
 // Tag-Namen anpassen (siehe README/Release-Workflow).
-define('APP_VERSION', 'v0.13.3-alpha');
+define('APP_VERSION', 'v0.13.2-alpha');
 
 /**
  * Baut eine root-relative URL innerhalb der App, egal in welchem Unterordner

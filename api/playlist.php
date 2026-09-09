@@ -11,14 +11,6 @@ use App\Repositories\TrackRepository;
 header('Content-Type: application/json; charset=utf-8');
 Auth::requireLoginApi();
 
-// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php
-// und api/stream.php): wird bei jedem Trackwechsel/jeder Playlist-Aenderung
-// aufgerufen (refreshPlaylist(), set_now_playing, advance, ...) und darf
-// eine parallele Anfrage derselben Sitzung nicht blockieren, z.B.
-// api/stream.php beim Spulen im Slider. Keine der Aktionen unten schreibt
-// in $_SESSION (nur in die Settings-Tabelle/DB).
-session_write_close();
-
 function json_fail(int $code, string $message): void
 {
     http_response_code($code);

@@ -114,15 +114,6 @@
     // track_id des Tracks, der gerade per Crossfade eingeblendet wird (fuer
     // den Blink-Effekt in der Playlist-Zeile, siehe updateCrossfadeRowClass).
     var crossfadeTargetTrackId = null;
-    // Zustand der laufenden Ueberblendung, damit sowohl der Fade-Timer als
-    // auch ein vorzeitiges natives 'ended' des auslaufenden Tracks (siehe
-    // forceFinishCrossfade) dieselbe Ueberblendung sauber abschliessen
-    // koennen, statt dass die Playlist-Zeile bis zum naechsten Timer-Tick
-    // auf 0:00 haengen bleibt.
-    var crossfadeTimer = null;
-    var crossfadePendingNext = null;
-    var crossfadePendingFinished = null;
-    var crossfadePendingSkipAdvance = false;
     var playlistItems = [];
     var isDragging = false;
     // Kleiner Verlauf der zuletzt gespielten Tracks, damit der "Zurueck"-
@@ -261,42 +252,6 @@
       countdownWrap.hidden = false;
       countdownValue.textContent = '-' + formatDuration(activeAudio.duration - activeAudio.currentTime);
     }
-
-    /* -- Laufender Tab-/Fenstertitel: zeigt Titel/Interpret des aktuell
-     * gespielten Tracks als durchlaufenden Text im Browser-Tab an - anders
-     * als der Ticker oben (updateTicker) IMMER aktiv, unabhaengig von der
-     * Einstellung "Ticker anzeigen" (die betrifft nur den Ticker auf der
-     * Seite selbst). Ein eigener, fester Interval statt an 'timeupdate'
-     * gekoppelt, damit der Text auch bei pausierter Wiedergabe gleichmaessig
-     * weiterlaeuft. */
-    var baseDocumentTitle = document.title;
-    var tabTitleScrollPos = 0;
-    var tabTitleScrollTrackId = null;
-    var TAB_TITLE_WIDTH = 28;
-
-    function updateTabTitle() {
-      if (currentTrackId === null) {
-        document.title = baseDocumentTitle;
-        tabTitleScrollPos = 0;
-        tabTitleScrollTrackId = null;
-        return;
-      }
-      if (currentTrackId !== tabTitleScrollTrackId) {
-        tabTitleScrollTrackId = currentTrackId;
-        tabTitleScrollPos = 0;
-      }
-      var label = '♪ ' + (titleEl.textContent || '') + (artistEl.textContent ? ' – ' + artistEl.textContent : '');
-      if (label.length <= TAB_TITLE_WIDTH) {
-        document.title = label;
-        return;
-      }
-      var padded = label + '   •   ';
-      var rotated = padded.slice(tabTitleScrollPos) + padded.slice(0, tabTitleScrollPos);
-      document.title = rotated.slice(0, TAB_TITLE_WIDTH);
-      tabTitleScrollPos = (tabTitleScrollPos + 1) % padded.length;
-    }
-
-    setInterval(updateTabTitle, 400);
 
     /** Restlaufzeit des aktiven Tracks in Sekunden, oder null wenn (noch) unbekannt. */
     function remainingSeconds() {
@@ -438,27 +393,12 @@
       crossfadeTargetTrackId = next.track_id;
       updateCrossfadeRowClass();
       var finished = currentTrackId;
-      // Die Ueberblendung darf nie laenger dauern als die tatsaechlich noch
-      // verbleibende Spielzeit des auslaufenden Tracks - sonst spielt dessen
-      // <audio>-Element laengst zu Ende (natives 'ended', siehe unten),
-      // waehrend der Fade-Timer weiterhin auf die volle Crossfade-Dauer
-      // wartet: die Playlist-Zeile bliebe dann bei 0:00 stehen und blinkt,
-      // bis der Timer irgendwann doch ablaeuft (siehe Nutzer-Report). Kann
-      // passieren, wenn 'timeupdate' (der Ausloeser fuer maybeStartCrossfade)
-      // verzoegert feuert, z.B. in einem gedrosselten Hintergrund-Tab.
-      var actualRemaining = isFinite(activeAudio.duration)
-        ? Math.max(0, activeAudio.duration - activeAudio.currentTime)
-        : crossfadeSeconds;
-      var fadeMs = Math.max(500, Math.min(crossfadeSeconds, actualRemaining || crossfadeSeconds) * 1000);
+      var fadeMs = Math.max(500, crossfadeSeconds * 1000);
 
       standbyAudio.src = streamUrl(next.track_id);
       standbyAudio.currentTime = 0;
       standbyAudio.volume = 0;
       standbyAudio.play().catch(function () {});
-
-      crossfadePendingNext = next;
-      crossfadePendingFinished = finished;
-      crossfadePendingSkipAdvance = !!skipAdvance;
 
       // Zeitbasiert per setInterval statt requestAnimationFrame: rAF wird
       // von Browsern in Hintergrund-Tabs komplett angehalten (haengt an der
@@ -472,34 +412,18 @@
       // die Anzahl Interval-Aufrufe, damit die Ueberblendung auch gedrosselt
       // zur richtigen Zeit fertig wird.
       var startTs = Date.now();
-      crossfadeTimer = setInterval(function () {
+      var timer = setInterval(function () {
         var t = Math.min(1, (Date.now() - startTs) / fadeMs);
         activeAudio.volume = Math.max(0, 1 - t) * masterVolume;
         standbyAudio.volume = Math.min(1, t) * masterVolume;
         if (t >= 1) {
-          clearInterval(crossfadeTimer);
-          crossfadeTimer = null;
+          clearInterval(timer);
           finishCrossfade(next, finished, skipAdvance);
         }
       }, 100);
     }
 
-    /** Schliesst eine laufende Ueberblendung sofort ab, statt auf den
-     * naechsten Timer-Tick zu warten - fuer den Fall, dass der auslaufende
-     * Track sein natives 'ended' feuert, bevor der (auf die tatsaechliche
-     * Restzeit gedeckelte) Fade-Timer selbst durchlaeuft, z.B. bei
-     * gedrosselten Hintergrund-Tab-Timern. */
-    function forceFinishCrossfade() {
-      if (!crossfading) return;
-      if (crossfadeTimer) {
-        clearInterval(crossfadeTimer);
-        crossfadeTimer = null;
-      }
-      finishCrossfade(crossfadePendingNext, crossfadePendingFinished, crossfadePendingSkipAdvance);
-    }
-
     function finishCrossfade(next, finishedTrackId, skipAdvance) {
-      if (!crossfading) return;
       if (!skipAdvance) pushHistory();
       activeAudio.pause();
       activeAudio.currentTime = 0;
@@ -522,9 +446,6 @@
       if (!skipAdvance) advanceOnServer(finishedTrackId);
       crossfading = false;
       crossfadeTargetTrackId = null;
-      crossfadePendingNext = null;
-      crossfadePendingFinished = null;
-      crossfadePendingSkipAdvance = false;
       updateCrossfadeRowClass();
       setTimeout(refreshPlaylist, 250);
     }
@@ -596,15 +517,7 @@
       el.addEventListener('play', function (e) { if (e.target === activeAudio && playBtn) playBtn.textContent = '⏸'; });
       el.addEventListener('pause', function (e) { if (e.target === activeAudio && playBtn) playBtn.textContent = '▶'; saveNowPlaying(); });
       el.addEventListener('ended', function (e) {
-        if (e.target !== activeAudio) return;
-        if (crossfading) {
-          // Der auslaufende Track ist bereits fertig, bevor der (auf die
-          // Restzeit gedeckelte) Fade-Timer selbst durchgelaufen ist - sofort
-          // abschliessen statt bis zum naechsten Timer-Tick auf 0:00 haengen
-          // zu bleiben (siehe forceFinishCrossfade).
-          forceFinishCrossfade();
-          return;
-        }
+        if (e.target !== activeAudio || crossfading) return;
         advanceToNext();
       });
       el.addEventListener('loadedmetadata', function (e) {
@@ -992,11 +905,6 @@
             e.stopPropagation();
             postJson(api('api/playlist.php'), { action: 'add', track_id: id, csrf_token: CSRF }).then(function () {
               if (window.APP_REFRESH_PLAYLIST) window.APP_REFRESH_PLAYLIST();
-              // Kurzes gruenes Aufleuchten als Bestaetigung, dass der Klick
-              // angekommen ist - ohne das gibt es sonst keine sichtbare
-              // Rueckmeldung, da sich die Bibliotheksliste dabei nicht aendert.
-              addBtn.classList.add('is-added');
-              setTimeout(function () { addBtn.classList.remove('is-added'); }, 700);
             });
           });
         }

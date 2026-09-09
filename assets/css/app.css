@@ -207,15 +207,6 @@
 .app-upload-item.is-error .app-upload-item__bar .app-progressbar__fill { background: var(--pnk-danger); }
 .app-upload-item.is-error .app-upload-item__status { color: var(--pnk-danger); }
 
-/* Kurzes gruenes Aufleuchten als Bestaetigung, z.B. "+ Playlist"-Button
-   nach dem Hinzufuegen (siehe btn-add-playlist in app.js). */
-.btn-add-playlist.is-added {
-  background: var(--pnk-success) !important;
-  border-color: var(--pnk-success) !important;
-  color: #fff !important;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
-}
-
 .app-qr-box {
   display: flex;
   gap: var(--pnk-space-5);
