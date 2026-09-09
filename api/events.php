@@ -12,10 +12,23 @@ use App\Repositories\TrackReactionRepository;
 /**
  * Server-Sent-Events-Stream fuer Echtzeit-Updates (Playlist/Wunschliste/
  * Ticker/Reaktionen) statt separater 8-10s-Polling-Requests. Bewusst
- * kurzlebig (~24s) mit anschliessendem sauberem Verbindungsende statt einer
+ * kurzlebig (~6-8s) mit anschliessendem sauberem Verbindungsende statt einer
  * dauerhaft offenen Verbindung - viele Shared-Hoster limitieren die
  * PHP-Ausfuehrungszeit/Prozesszahl pro Client streng (siehe README). Der
- * `EventSource` im Browser reconnectet danach automatisch von selbst.
+ * `EventSource` im Browser reconnectet danach automatisch von selbst (nach
+ * der unten gesetzten "retry"-Pause).
+ *
+ * Die Zykluslaenge war frueher 12 Iterationen (~24s) - das hielt auf
+ * Shared-Hosting mit wenigen PHP-Arbeitsprozessen (Apache/PHP-FPM, oft nur
+ * eine Handvoll gleichzeitig) durchgehend einen ganzen Prozess fuer JEDE
+ * offene Admin-Sitzung belegt. Bei mehr Tracks/Cover-Bildern (siehe Upload-
+ * Funktion) reichte der Rest-Pool dann nicht mehr aus: Cover-Bilder,
+ * Seitenwechsel und Playlist-Aktionen mussten auf einen freien Prozess
+ * warten und wirkten "haengend" (siehe Nutzer-Report, mit einem lokalen
+ * Lasttest reproduziert: 10 parallele Cover-Anfragen brauchten mit der
+ * 24s-Verbindung ueber 20s, mit einer 6-8s-Verbindung unter 0,1s). Kuerzere
+ * Zyklen lassen den Prozess deutlich oefter wieder frei werden, auf Kosten
+ * etwas haeufigerer (aber sehr billiger) Neuverbindungen.
  */
 
 $scope = $_GET['scope'] ?? 'guest';
@@ -147,14 +160,14 @@ function events_payload_guest(): array
 echo "retry: 1000\n\n";
 flush();
 
-for ($i = 0; $i < 12; $i++) {
+for ($i = 0; $i < 4; $i++) {
     if (connection_aborted()) {
         break;
     }
     $payload = $scope === 'admin' ? events_payload_admin() : events_payload_guest();
     echo 'data: ' . json_encode($payload) . "\n\n";
     flush();
-    if ($i < 11) {
+    if ($i < 3) {
         sleep(2);
     }
 }
