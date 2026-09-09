@@ -26,6 +26,9 @@ if (!Csrf::check($token)) {
     exit;
 }
 
+// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php).
+session_write_close();
+
 $live = !empty($input['live']);
 $settings = new SettingRepository();
 $settings->set('app_live', $live ? '1' : '0');

@@ -9,6 +9,13 @@ Auth::requireLogin();
 $pageTitle = 'Player';
 $activeNav = 'player';
 require __DIR__ . '/templates/admin_header.php';
+// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php):
+// erst NACH admin_header.php, da dessen Sidebar (Csrf::field()) bei der
+// allerersten Anfrage einer Sitzung noch ein frisches CSRF-Token in
+// $_SESSION schreibt - vorher geschlossen wuerde dieser Schreibvorgang
+// verworfen und nie gespeichert werden. Gerade auf dieser Seite besonders
+// wichtig, da sie waehrend der gesamten Wiedergabe im Browser offen bleibt.
+session_write_close();
 ?>
 
 <div class="pnk-flex pnk-justify-between pnk-items-center" style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;">

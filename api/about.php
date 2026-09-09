@@ -14,6 +14,9 @@ use App\Repositories\SettingRepository;
 header('Content-Type: application/json; charset=utf-8');
 Auth::requireLoginApi();
 
+// Session-Lock sofort freigeben (siehe dieselbe Massnahme in api/events.php).
+session_write_close();
+
 $appName = (new SettingRepository())->get('app_name', 'Party Player');
 
 echo json_encode([
