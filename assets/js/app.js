@@ -129,6 +129,16 @@
     var crossfadePendingSkipAdvance = false;
     var playlistItems = [];
     var isDragging = false;
+    // Zeitpunkt der letzten eigenen Playlist-Aenderung (hinzufuegen/entfernen/
+    // umsortieren) - siehe lastLocalPlaylistMutationAt-Nutzung beim SSE-
+    // Handler weiter unten: verhindert, dass eine parallel bereits unterwegs
+    // gewesene (also noch veraltete) Echtzeit-Nachricht kurz nach der eigenen
+    // Aktion die Anzeige wieder auf den alten Stand zuruecksetzt, bevor die
+    // gezielte Nachfrage (refreshPlaylist) selbst antwortet - unter spuerbarer
+    // Netzwerk-/Serverlast beobachtet (Bug-Report: "Entfernen hat nicht
+    // geklappt, erst nach einer weiteren Aktion aktualisiert").
+    var lastLocalPlaylistMutationAt = 0;
+    var LOCAL_PLAYLIST_MUTATION_GRACE_MS = 3000;
     // Kleiner Verlauf der zuletzt gespielten Tracks, damit der "Zurueck"-
     // Button per Crossfade zu einem echten vorherigen Track zurueckblenden
     // kann (die Playlist selbst kennt nur "was kommt noch").
@@ -407,15 +417,19 @@
     }
 
     function advanceOnServer(finishedTrackId) {
-      if (finishedTrackId === null || finishedTrackId === undefined) return;
-      postJson(api('api/playlist.php'), { action: 'advance', track_id: finishedTrackId, csrf_token: CSRF });
+      if (finishedTrackId === null || finishedTrackId === undefined) return Promise.resolve();
+      // Siehe lastLocalPlaylistMutationAt weiter unten - schuetzt den
+      // gleich folgenden refreshPlaylist()-Aufruf davor, durch eine noch
+      // veraltete (von VOR diesem Advance berechnete) Echtzeit-Nachricht
+      // wieder ueberschrieben zu werden.
+      lastLocalPlaylistMutationAt = Date.now();
+      return postJson(api('api/playlist.php'), { action: 'advance', track_id: finishedTrackId, csrf_token: CSRF });
     }
 
     /** Kein Crossfade (oder Fallback): naechsten Playlist-Track direkt im aktiven Element weiterspielen. */
     function advanceToNext() {
       var finished = currentTrackId;
       var next = nextItemAfterCurrent(playlistItems);
-      advanceOnServer(finished);
       if (next) {
         loadAndPlay(next.track_id, next.title, next.artist);
       } else {
@@ -424,7 +438,13 @@
         artistEl.textContent = '-';
         clearNowPlaying();
       }
-      setTimeout(refreshPlaylist, 250);
+      // Playlist erst aktualisieren, NACHDEM der Server das Advance
+      // bestaetigt hat, statt nach einer festen Wartezeit zu raten - sonst
+      // kann der Refresh den noch laufenden Server-Vorgang ueberholen und
+      // zeigt den fertig gespielten Track faelschlich weiter an, bis der
+      // naechste turnusmaessige Refresh das zufaellig korrigiert (siehe
+      // Nutzer-Report: "2-4 Sekunden zu lange in der Playlist").
+      advanceOnServer(finished).then(refreshPlaylist);
     }
 
     /** Ueberblendet weich zum naechsten Playlist-Track statt hart zu schneiden.
@@ -520,14 +540,21 @@
       // damals uebersprungen) - Fortschrittsbalken/Restzeit jetzt manuell
       // auf den neuen (jetzt aktiven) Track synchronisieren.
       syncDurationUI();
-      if (!skipAdvance) advanceOnServer(finishedTrackId);
       crossfading = false;
       crossfadeTargetTrackId = null;
       crossfadePendingNext = null;
       crossfadePendingFinished = null;
       crossfadePendingSkipAdvance = false;
       updateCrossfadeRowClass();
-      setTimeout(refreshPlaylist, 250);
+      // Playlist erst aktualisieren, NACHDEM der Server das Advance
+      // bestaetigt hat (siehe advanceToNext() fuer die ausfuehrliche
+      // Begruendung) - bei skipAdvance (Zurueck-Button) gibt es kein Advance
+      // abzuwarten, dort reicht ein sofortiger Refresh wie bisher.
+      if (!skipAdvance) {
+        advanceOnServer(finishedTrackId).then(refreshPlaylist);
+      } else {
+        refreshPlaylist();
+      }
     }
 
     function maybeStartCrossfade() {
@@ -688,6 +715,7 @@
       var to = ids.indexOf(String(targetId));
       if (from === -1 || to === -1) return;
       ids.splice(to, 0, ids.splice(from, 1)[0]);
+      lastLocalPlaylistMutationAt = Date.now();
       postJson(api('api/playlist.php'), { action: 'reorder', ids: ids, csrf_token: CSRF }).then(refreshPlaylist);
     }
 
@@ -746,6 +774,7 @@
             '<div style="font-weight:600;">' + escapeHtml(it.title || '(ohne Titel)') + (isCurrent ? ' <span class="pnk-text-muted">▶ läuft</span>' : '') + '</div>' +
             '<div class="pnk-text-muted" style="font-size:12px;">' + escapeHtml(it.artist || '') +
               ' · <span class="pnk-badge" style="padding:1px 7px;">' + (sourceLabels[it.source] || it.source) + '</span>' +
+              (it.codec ? ' · <span class="pnk-badge ' + (it.codec === 'flac' ? 'pnk-badge--success' : 'pnk-badge--accent') + '" style="padding:1px 7px;">' + escapeHtml(it.codec.toUpperCase()) + '</span>' : '') +
               (it.guest_name ? ' · ' + escapeHtml(it.guest_name) : '') +
               (isNext ? ' · <span class="app-badge-next">Als Nächstes</span>' : '') + '</div>' +
           '</div>' +
@@ -773,6 +802,7 @@
       });
       playlistList.querySelectorAll('.btn-pl-remove').forEach(function (btn) {
         btn.addEventListener('click', function () {
+          lastLocalPlaylistMutationAt = Date.now();
           postJson(api('api/playlist.php'), { action: 'remove', id: btn.getAttribute('data-id'), csrf_token: CSRF })
             .then(refreshPlaylist);
         });
@@ -846,7 +876,7 @@
 
     /** Echtzeit-Updates (Playlist/Wunschliste/Reaktionszaehler) per Server-Sent
      * Events statt 8-10s-Polling - siehe api/events.php. Kurzlebiger Stream
-     * (~24s) mit automatischem Reconnect, schonend fuer Shared-Hosting mit
+     * (~6-8s) mit automatischem Reconnect, schonend fuer Shared-Hosting mit
      * strengen PHP-Ausfuehrungszeitlimits. Ersetzt die bisherigen Polling-
      * Intervalle von refreshPlaylist/refreshQueue/der Reaktionsanzeige. */
     if (window.EventSource) {
@@ -854,7 +884,16 @@
       adminEvents.onmessage = function (e) {
         var j;
         try { j = JSON.parse(e.data); } catch (err) { return; }
-        applyPlaylistJson(j);
+        // Kurz nach einer eigenen Playlist-Aenderung (add/remove/reorder)
+        // diese SSE-Nachricht NICHT anwenden, falls sie noch von VOR der
+        // eigenen Aktion serverseitig berechnet wurde und erst jetzt (durch
+        // Netzwerk-/Serverlast verzoegert) ankommt - sonst wuerde sie die per
+        // refreshPlaylist() bereits aktualisierte, korrekte Anzeige wieder
+        // auf den alten Stand zuruecksetzen (siehe lastLocalPlaylistMutationAt
+        // oben, Bug-Report "Entfernen hat nicht geklappt").
+        if (Date.now() - lastLocalPlaylistMutationAt > LOCAL_PLAYLIST_MUTATION_GRACE_MS) {
+          applyPlaylistJson(j);
+        }
         renderQueue(j.requests || []);
         applyReactionJson(j.now_playing, j.reaction_count);
 
@@ -1002,6 +1041,7 @@
       if (addBtn) {
         addBtn.addEventListener('click', function (e) {
           e.stopPropagation();
+          lastLocalPlaylistMutationAt = Date.now();
           postJson(api('api/playlist.php'), { action: 'add', track_id: id, csrf_token: CSRF }).then(function () {
             if (window.APP_REFRESH_PLAYLIST) window.APP_REFRESH_PLAYLIST();
             // Kurzes gruenes Aufleuchten als Bestaetigung, dass der Klick

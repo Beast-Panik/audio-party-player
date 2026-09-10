@@ -359,7 +359,7 @@
   /* ================================================================== *
    * Echtzeit-Updates (Ticker/Herz-Zaehler/Wunschliste) per Server-Sent
    * Events statt 8-10s-Polling - siehe api/events.php. Kurzlebiger Stream
-   * (~24s) mit automatischem Reconnect, schonend fuer Shared-Hosting mit
+   * (~6-8s) mit automatischem Reconnect, schonend fuer Shared-Hosting mit
    * strengen PHP-Ausfuehrungszeitlimits.
    * ================================================================== */
   if (window.EventSource) {

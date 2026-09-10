@@ -57,7 +57,7 @@ require __DIR__ . '/templates/admin_header.php';
 </details>
 <?php endif; ?>
 
-<div class="pnk-card">
+<div class="pnk-card" style="margin-bottom:20px;">
   <div class="pnk-card__header">
     <span class="pnk-card__title">Bibliothek</span>
     <span class="pnk-text-muted" id="track-count" style="font-size:12px;"></span>

@@ -601,9 +601,10 @@
   background: var(--pnk-surface-raised);
   color: var(--pnk-text);
 }
-.pnk-badge--accent { background: var(--pnk-accent); color: var(--pnk-text-on-accent); }
-.pnk-badge--warm   { background: var(--pnk-accent-warm); color: #1e2022; }
-.pnk-badge--danger { background: var(--pnk-danger); color: var(--pnk-text-on-accent); }
+.pnk-badge--accent  { background: var(--pnk-accent); color: var(--pnk-text-on-accent); }
+.pnk-badge--warm    { background: var(--pnk-accent-warm); color: #1e2022; }
+.pnk-badge--danger  { background: var(--pnk-danger); color: var(--pnk-text-on-accent); }
+.pnk-badge--success { background: var(--pnk-success); color: #10240f; }
 
 .pnk-alert {
   padding: var(--pnk-space-3) var(--pnk-space-4);

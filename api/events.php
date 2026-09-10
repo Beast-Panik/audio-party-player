@@ -103,6 +103,7 @@ function events_payload_admin(): array
                 'artist' => $r['artist'],
                 'album' => $r['album'],
                 'duration_seconds' => $r['duration_seconds'] !== null ? (int) $r['duration_seconds'] : null,
+                'codec' => $r['codec'],
                 'source' => $r['source'],
                 'guest_name' => $r['guest_name'],
             ];

@@ -45,6 +45,7 @@ if ($method === 'GET') {
                 'artist' => $r['artist'],
                 'album' => $r['album'],
                 'duration_seconds' => $r['duration_seconds'] !== null ? (int) $r['duration_seconds'] : null,
+                'codec' => $r['codec'],
                 'source' => $r['source'],
                 'guest_name' => $r['guest_name'],
                 'request_id' => $r['request_id'] !== null ? (int) $r['request_id'] : null,
