@@ -6,12 +6,31 @@ use App\Database;
 
 final class SettingRepository
 {
+    /** Prozessweiter Cache aller Settings - vermeidet, dass Code-Pfade mit
+     * vielen einzelnen get()-Aufrufen (z.B. events_payload_admin() in
+     * api/events.php, bei jedem Echtzeit-Tick fuer jede verbundene Sitzung)
+     * jedes Mal einzeln die Datenbank abfragen. Wird von set() sofort
+     * mitgepflegt, damit ein get() innerhalb derselben Anfrage nie einen
+     * veralteten Wert sieht. Ueberlebt nur die Laufzeit einer einzelnen
+     * PHP-Anfrage (statisch pro Prozess) - Aenderungen aus einer anderen,
+     * parallel laufenden Anfrage koennen daher fuer den Rest einer laenger
+     * laufenden Anfrage (z.B. den aktuellen SSE-Verbindungszyklus) leicht
+     * verzoegert ankommen, spaetestens mit der naechsten Anfrage/Verbindung.
+     */
+    private static ?array $cache = null;
+
+    private function cache(): array
+    {
+        if (self::$cache === null) {
+            self::$cache = $this->all();
+        }
+        return self::$cache;
+    }
+
     public function get(string $key, ?string $default = null): ?string
     {
-        $stmt = Database::get()->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
-        $stmt->execute([$key]);
-        $row = $stmt->fetch();
-        return $row ? $row['setting_value'] : $default;
+        $cache = $this->cache();
+        return array_key_exists($key, $cache) ? $cache[$key] : $default;
     }
 
     public function set(string $key, ?string $value): void
@@ -23,6 +42,9 @@ final class SettingRepository
             $pdo->prepare('UPDATE settings SET setting_value = ? WHERE setting_key = ?')->execute([$value, $key]);
         } else {
             $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)')->execute([$key, $value]);
+        }
+        if (self::$cache !== null) {
+            self::$cache[$key] = $value;
         }
     }
 

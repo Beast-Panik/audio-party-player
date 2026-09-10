@@ -38,8 +38,14 @@ $offset = max(0, (int) ($_GET['offset'] ?? 0));
 // ignoriert statt als LIKE-Muster durchgereicht.
 $startsWithRaw = trim((string) ($_GET['starts_with'] ?? ''));
 $startsWith = mb_strlen($startsWithRaw) === 1 ? $startsWithRaw : null;
+// Fester Seed fuer die zufaellige Grundsortierung (siehe search()) - ohne
+// ihn wuerde jede Seite (LIMIT/OFFSET) unabhaengig neu gemischt und beim
+// seitenweisen Nachladen (Bibliothek player.php) kaemen Titel doppelt vor
+// oder gar nicht (Bug-Report). Der Client schickt fuer die Dauer eines
+// Browse-Vorgangs denselben Seed mit.
+$seed = isset($_GET['seed']) ? (int) $_GET['seed'] : null;
 
-$tracks = $repo->search($q, $limit, $offset, $startsWith);
+$tracks = $repo->search($q, $limit, $offset, $startsWith, $seed);
 
 $out = array_map(static function (array $t) use ($repo, $lockHours): array {
     $locked = $repo->isLocked($t, $lockHours);

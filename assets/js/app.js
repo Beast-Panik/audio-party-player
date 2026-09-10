@@ -438,18 +438,15 @@
       crossfadeTargetTrackId = next.track_id;
       updateCrossfadeRowClass();
       var finished = currentTrackId;
-      // Die Ueberblendung darf nie laenger dauern als die tatsaechlich noch
-      // verbleibende Spielzeit des auslaufenden Tracks - sonst spielt dessen
-      // <audio>-Element laengst zu Ende (natives 'ended', siehe unten),
-      // waehrend der Fade-Timer weiterhin auf die volle Crossfade-Dauer
-      // wartet: die Playlist-Zeile bliebe dann bei 0:00 stehen und blinkt,
-      // bis der Timer irgendwann doch ablaeuft (siehe Nutzer-Report). Kann
-      // passieren, wenn 'timeupdate' (der Ausloeser fuer maybeStartCrossfade)
-      // verzoegert feuert, z.B. in einem gedrosselten Hintergrund-Tab.
-      var actualRemaining = isFinite(activeAudio.duration)
-        ? Math.max(0, activeAudio.duration - activeAudio.currentTime)
-        : crossfadeSeconds;
-      var fadeMs = Math.max(500, Math.min(crossfadeSeconds, actualRemaining || crossfadeSeconds) * 1000);
+      // Bewusst immer die volle eingestellte Crossfade-Dauer, unabhaengig von
+      // der tatsaechlich verbleibenden Spielzeit des auslaufenden Tracks -
+      // eine Deckelung auf die Restzeit (z.B. bis auf 500ms) gab dem neuen
+      // Track beim schnellen Skippen zu wenig Zeit zum Puffern, bevor er als
+      // "aktiv" uebernommen wurde (blieb dann stumm haengen, siehe Nutzer-
+      // Report). Der 0:00-Haenger bei natuerlichem Trackende (verzoegertes
+      // 'timeupdate' in einem gedrosselten Hintergrund-Tab) wird stattdessen
+      // ausschliesslich ueber forceFinishCrossfade() unten abgefangen.
+      var fadeMs = Math.max(500, crossfadeSeconds * 1000);
 
       standbyAudio.src = streamUrl(next.track_id);
       standbyAudio.currentTime = 0;
@@ -960,59 +957,109 @@
     var trackCountEl = document.getElementById('track-count');
     var jumpBar = document.getElementById('jump-bar');
     var searchTimer = null;
+    // Beim Laden/Suchen/Springen werden immer nur PAGE_SIZE Titel geholt,
+    // weitere erst per Klick auf "Weitere Songs laden" (statt alle auf
+    // einmal zu rendern - bei grossen Bibliotheken sonst spuerbar traege).
+    var PAGE_SIZE = 20;
+    var currentQuery = '';
+    var currentStartsWith = null;
+    var currentOffset = 0;
+    var currentSeed = 0;
+    var loadMoreBtn = null;
 
-    function renderTracks(tracks, total) {
-      if (!tracks.length) {
-        trackList.innerHTML = '<div class="app-empty">Keine Songs gefunden.</div>';
-        return;
+    function trackRowHtml(t) {
+      return '<div class="app-track-row" data-id="' + t.id + '">' +
+        '<div class="app-track-row__cover">' + (t.has_cover ? '<img src="' + api('api/cover.php?id=' + t.id) + '" alt="">' : '') + '</div>' +
+        '<div class="app-track-row__title">' + escapeHtml(t.title || t.filename || '(ohne Titel)') +
+          (t.locked ? ' <span class="pnk-badge" title="Kürzlich gespielt">🔒</span>' : '') + '</div>' +
+        '<div class="app-track-row__sub app-track-row__sub--meta">' + escapeHtml(t.artist || '') + (t.album ? ' · ' + escapeHtml(t.album) : '') + '</div>' +
+        '<div class="app-track-row__sub app-track-row__sub--year">' + (t.year || '') + '</div>' +
+        '<div class="app-track-row__sub app-track-row__sub--duration">' + formatDuration(t.duration_seconds) + '</div>' +
+        '<div class="app-track-row__actions">' +
+          '<button class="pnk-btn pnk-btn--ghost pnk-btn--sm btn-add-playlist" type="button" title="Zur Playlist hinzufuegen">+ Playlist</button>' +
+        '</div>' +
+        '</div>';
+    }
+
+    function wireRow(row) {
+      var id = parseInt(row.getAttribute('data-id'), 10);
+      var addBtn = row.querySelector('.btn-add-playlist');
+      if (addBtn) {
+        addBtn.addEventListener('click', function (e) {
+          e.stopPropagation();
+          postJson(api('api/playlist.php'), { action: 'add', track_id: id, csrf_token: CSRF }).then(function () {
+            if (window.APP_REFRESH_PLAYLIST) window.APP_REFRESH_PLAYLIST();
+            // Kurzes gruenes Aufleuchten als Bestaetigung, dass der Klick
+            // angekommen ist - ohne das gibt es sonst keine sichtbare
+            // Rueckmeldung, da sich die Bibliotheksliste dabei nicht aendert.
+            addBtn.classList.add('is-added');
+            setTimeout(function () { addBtn.classList.remove('is-added'); }, 700);
+          });
+        });
       }
-      var html = '';
-      tracks.forEach(function (t) {
-        html += '<div class="app-track-row" data-id="' + t.id + '">' +
-          '<div class="app-track-row__cover">' + (t.has_cover ? '<img src="' + api('api/cover.php?id=' + t.id) + '" alt="">' : '') + '</div>' +
-          '<div class="app-track-row__title">' + escapeHtml(t.title || t.filename || '(ohne Titel)') +
-            (t.locked ? ' <span class="pnk-badge" title="Kürzlich gespielt">🔒</span>' : '') + '</div>' +
-          '<div class="app-track-row__sub app-track-row__sub--meta">' + escapeHtml(t.artist || '') + (t.album ? ' · ' + escapeHtml(t.album) : '') + '</div>' +
-          '<div class="app-track-row__sub app-track-row__sub--year">' + (t.year || '') + '</div>' +
-          '<div class="app-track-row__sub app-track-row__sub--duration">' + formatDuration(t.duration_seconds) + '</div>' +
-          '<div class="app-track-row__actions">' +
-            '<button class="pnk-btn pnk-btn--ghost pnk-btn--sm btn-add-playlist" type="button" title="Zur Playlist hinzufuegen">+ Playlist</button>' +
-          '</div>' +
-          '</div>';
-      });
-      trackList.innerHTML = html;
+    }
+
+    function renderTracks(tracks, total, append) {
+      if (loadMoreBtn) {
+        loadMoreBtn.remove();
+        loadMoreBtn = null;
+      }
+      if (!append) {
+        trackList.innerHTML = '';
+      }
       if (trackCountEl && total !== undefined) {
         trackCountEl.textContent = total + ' Songs insgesamt';
       }
-      trackList.querySelectorAll('.app-track-row').forEach(function (row) {
-        var id = parseInt(row.getAttribute('data-id'), 10);
-        var addBtn = row.querySelector('.btn-add-playlist');
-        if (addBtn) {
-          addBtn.addEventListener('click', function (e) {
-            e.stopPropagation();
-            postJson(api('api/playlist.php'), { action: 'add', track_id: id, csrf_token: CSRF }).then(function () {
-              if (window.APP_REFRESH_PLAYLIST) window.APP_REFRESH_PLAYLIST();
-              // Kurzes gruenes Aufleuchten als Bestaetigung, dass der Klick
-              // angekommen ist - ohne das gibt es sonst keine sichtbare
-              // Rueckmeldung, da sich die Bibliotheksliste dabei nicht aendert.
-              addBtn.classList.add('is-added');
-              setTimeout(function () { addBtn.classList.remove('is-added'); }, 700);
-            });
-          });
+      if (!tracks.length) {
+        if (!append) {
+          trackList.innerHTML = '<div class="app-empty">Keine Songs gefunden.</div>';
         }
-      });
+        return;
+      }
+      var html = '';
+      tracks.forEach(function (t) { html += trackRowHtml(t); });
+      trackList.insertAdjacentHTML('beforeend', html);
+      currentOffset += tracks.length;
+      var rows = trackList.querySelectorAll('.app-track-row');
+      Array.prototype.slice.call(rows, rows.length - tracks.length).forEach(wireRow);
+      // Genau PAGE_SIZE zurueckbekommen heisst "vermutlich gibt es noch
+      // mehr" (einfache, robuste Heuristik ohne eigenen gefilterten
+      // Gesamtzaehler vom Server - "total" oben ist bewusst immer die
+      // ungefilterte Bibliotheksgroesse, siehe api/tracks.php).
+      if (tracks.length === PAGE_SIZE) {
+        loadMoreBtn = document.createElement('button');
+        loadMoreBtn.type = 'button';
+        loadMoreBtn.className = 'pnk-btn pnk-btn--ghost app-track-list__load-more';
+        loadMoreBtn.textContent = 'Weitere Songs laden';
+        loadMoreBtn.addEventListener('click', function () {
+          loadMoreBtn.disabled = true;
+          loadTracks(currentQuery, currentStartsWith, true);
+        });
+        trackList.appendChild(loadMoreBtn);
+      }
       if (window.APP_GET_CURRENT_TRACK && window.APP_HIGHLIGHT_PLAYING) {
         var current = window.APP_GET_CURRENT_TRACK();
         if (current !== null) window.APP_HIGHLIGHT_PLAYING(current);
       }
     }
 
-    function loadTracks(q, startsWith) {
-      var url = api('api/tracks.php?limit=150&q=' + encodeURIComponent(q || ''));
-      if (startsWith) url += '&starts_with=' + encodeURIComponent(startsWith);
+    function loadTracks(q, startsWith, append) {
+      if (!append) {
+        currentQuery = q || '';
+        currentStartsWith = startsWith || null;
+        currentOffset = 0;
+        // Neuer Seed pro frischem Browse-Vorgang (ohne Suchbegriff zeigt der
+        // Server dann eine neu gemischte Reihenfolge, wie bisher) - beim
+        // Nachladen (append) wird derselbe Seed weiterverwendet, damit die
+        // serverseitige Zufalls-Sortierung ueber alle Seiten hinweg stabil
+        // bleibt (siehe TrackRepository::search()).
+        currentSeed = Math.floor(Math.random() * 1000000000);
+      }
+      var url = api('api/tracks.php?limit=' + PAGE_SIZE + '&offset=' + currentOffset + '&seed=' + currentSeed + '&q=' + encodeURIComponent(currentQuery));
+      if (currentStartsWith) url += '&starts_with=' + encodeURIComponent(currentStartsWith);
       fetch(url)
         .then(function (r) { return r.json(); })
-        .then(function (j) { renderTracks(j.tracks || [], j.count); });
+        .then(function (j) { renderTracks(j.tracks || [], j.count, !!append); });
     }
 
     var jumpBarApi = initJumpBar(jumpBar, function (ch) {

@@ -138,8 +138,16 @@ final class TrackRepository
      * sortiert statt immer alphabetisch - bei jedem Laden der Seite werden
      * so andere Titel oben angezeigt, damit nicht immer dieselben (alphabet-
      * isch fruehen) Tracks den sichtbaren Ausschnitt dominieren.
+     *
+     * $seed: haelt diese "zufaellige" Reihenfolge ueber mehrere LIMIT/OFFSET-
+     * Aufrufe hinweg stabil (feste Rechenvorschrift statt echtem RANDOM() je
+     * Aufruf) - noetig fuer das seitenweise Nachladen in der Bibliothek
+     * (player.php): ohne festen Seed wuerde jede nachgeladene Seite neu
+     * gemischt, wodurch Titel doppelt oder gar nicht auftauchen (Bug-Report).
+     * Ohne $seed (z.B. andere Aufrufer) bleibt das alte Verhalten (echtes
+     * RANDOM() je Aufruf) unveraendert.
      */
-    public function search(string $query = '', int $limit = 100, int $offset = 0, ?string $startsWith = null): array
+    public function search(string $query = '', int $limit = 100, int $offset = 0, ?string $startsWith = null, ?int $seed = null): array
     {
         $pdo = Database::get();
         $query = trim($query);
@@ -159,6 +167,19 @@ final class TrackRepository
         }
 
         if ($query === '') {
+            if ($seed !== null) {
+                // Deterministische Pseudo-Zufalls-Reihenfolge per Multiplikations-
+                // Hash statt echtem RANDOM() - bleibt fuer denselben Seed ueber
+                // mehrere LIMIT/OFFSET-Aufrufe stabil (siehe Docblock oben).
+                $stmt = $pdo->prepare(
+                    'SELECT * FROM tracks ORDER BY ((id * 2654435761) + ?) % 1000000007 LIMIT ? OFFSET ?'
+                );
+                $stmt->bindValue(1, $seed, \PDO::PARAM_INT);
+                $stmt->bindValue(2, $limit, \PDO::PARAM_INT);
+                $stmt->bindValue(3, $offset, \PDO::PARAM_INT);
+                $stmt->execute();
+                return $stmt->fetchAll();
+            }
             $randomFn = Database::driver() === 'mysql' ? 'RAND()' : 'RANDOM()';
             $stmt = $pdo->prepare("SELECT * FROM tracks ORDER BY {$randomFn} LIMIT ? OFFSET ?");
             $stmt->bindValue(1, $limit, \PDO::PARAM_INT);
