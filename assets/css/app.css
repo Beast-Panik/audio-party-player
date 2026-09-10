@@ -659,6 +659,10 @@ html.app-sidebar-preload-collapsed .app-sidebar-ticker {
 .app-playlist-item {
   position: relative;
   overflow: hidden;
+  /* Glaettet die per JS alle 100ms in Fade-Schritten gesetzte opacity (siehe
+     beginCrossfade in app.js) zu einem fluessigen Ausblenden statt sichtbarer
+     Stufen. */
+  transition: opacity 120ms linear;
 }
 .app-playlist-item::before {
   content: "";

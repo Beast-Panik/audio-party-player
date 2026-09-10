@@ -127,6 +127,15 @@
     var crossfadePendingNext = null;
     var crossfadePendingFinished = null;
     var crossfadePendingSkipAdvance = false;
+    // Startzeitpunkt/Dauer der laufenden Ueberblendung - hier (statt nur
+    // lokal in beginCrossfade) gespeichert, damit renderPlaylist() den
+    // Fade-Fortschritt der Zeile des auslaufenden Tracks direkt beim Bauen
+    // des HTML mit einrechnen kann. Ohne das wuerde ein renderPlaylist()-
+    // Aufruf mitten im Fade (z.B. durch einen SSE-Tick) die Zeile kurz
+    // wieder voll sichtbar machen, bevor der naechste 100ms-Timer-Tick sie
+    // erneut abdunkelt - sichtbares Aufblitzen statt gleichmaessigem Fade.
+    var crossfadeStartTs = null;
+    var crossfadeFadeMs = null;
     var playlistItems = [];
     var isDragging = false;
     // Zeitpunkt der letzten eigenen Playlist-Aenderung (hinzufuegen/entfernen/
@@ -471,6 +480,7 @@
       // 'timeupdate' in einem gedrosselten Hintergrund-Tab) wird stattdessen
       // ausschliesslich ueber forceFinishCrossfade() unten abgefangen.
       var fadeMs = Math.max(500, crossfadeSeconds * 1000);
+      crossfadeFadeMs = fadeMs;
 
       standbyAudio.src = streamUrl(next.track_id);
       standbyAudio.currentTime = 0;
@@ -493,10 +503,23 @@
       // die Anzahl Interval-Aufrufe, damit die Ueberblendung auch gedrosselt
       // zur richtigen Zeit fertig wird.
       var startTs = Date.now();
+      crossfadeStartTs = startTs;
       crossfadeTimer = setInterval(function () {
         var t = Math.min(1, (Date.now() - startTs) / fadeMs);
         activeAudio.volume = Math.max(0, 1 - t) * masterVolume;
         standbyAudio.volume = Math.min(1, t) * masterVolume;
+        // Zeile des auslaufenden Tracks synchron zum Lautstaerke-Fade optisch
+        // ins Transparente ausblenden - bei skipAdvance (Zurueck-Button)
+        // bleibt der Track ja in der Playlist stehen, dort also unveraendert
+        // sichtbar lassen. Direkt am DOM-Knoten statt per CSS-Transition,
+        // damit ein zwischenzeitlicher renderPlaylist()-Aufruf (z.B. durch
+        // einen SSE-Tick) den Fade nicht zuruecksetzt/neu startet - der naechste
+        // Tick hier korrigiert die Deckkraft ohnehin binnen 100ms wieder.
+        if (!skipAdvance) {
+          var outListEl = document.getElementById('playlist-list');
+          var outRow = outListEl ? outListEl.querySelector('.app-playlist-item[data-track-id="' + finished + '"]') : null;
+          if (outRow) outRow.style.opacity = String(Math.max(0, 1 - t));
+        }
         if (t >= 1) {
           clearInterval(crossfadeTimer);
           crossfadeTimer = null;
@@ -522,6 +545,16 @@
     function finishCrossfade(next, finishedTrackId, skipAdvance) {
       if (!crossfading) return;
       if (!skipAdvance) pushHistory();
+      // Sicherheitsnetz fuer forceFinishCrossfade(): dort wird direkt
+      // abgeschlossen, ohne auf den letzten (moeglicherweise noch nicht ganz
+      // bei t=1 angekommenen) Timer-Tick zu warten - Zeile daher hier
+      // garantiert vollstaendig transparent setzen, bevor sie gleich aus der
+      // Playlist entfernt wird.
+      if (!skipAdvance) {
+        var outListEl = document.getElementById('playlist-list');
+        var outRow = outListEl ? outListEl.querySelector('.app-playlist-item[data-track-id="' + finishedTrackId + '"]') : null;
+        if (outRow) outRow.style.opacity = '0';
+      }
       activeAudio.pause();
       activeAudio.currentTime = 0;
       var swap = activeAudio;
@@ -545,6 +578,8 @@
       crossfadePendingNext = null;
       crossfadePendingFinished = null;
       crossfadePendingSkipAdvance = false;
+      crossfadeStartTs = null;
+      crossfadeFadeMs = null;
       updateCrossfadeRowClass();
       // Playlist erst aktualisieren, NACHDEM der Server das Advance
       // bestaetigt hat (siehe advanceToNext() fuer die ausfuehrliche
@@ -768,7 +803,17 @@
         var isNext = next && next.id === it.id;
         var isCrossfadingIn = crossfadeTargetTrackId !== null && it.track_id === crossfadeTargetTrackId;
         var isPauseFading = pauseFadeTrackId !== null && it.track_id === pauseFadeTrackId;
-        html += '<div class="app-request-item app-playlist-item' + (isCrossfadingIn ? ' is-crossfading-in' : '') + (isPauseFading ? ' is-pause-fading' : '') + '" draggable="true" data-id="' + it.id + '" data-track-id="' + it.track_id + '">' +
+        // Fade-Fortschritt der auslaufenden Zeile direkt beim Rendern
+        // mitgeben (statt ihn erst dem naechsten 100ms-Timer-Tick in
+        // beginCrossfade zu ueberlassen) - sonst wuerde ein renderPlaylist()-
+        // Aufruf mitten im Crossfade (z.B. durch einen SSE-Tick) die Zeile
+        // kurz wieder voll sichtbar aufblitzen lassen, bevor der Timer sie
+        // erneut abdunkelt.
+        var isFadingOut = crossfading && !crossfadePendingSkipAdvance && crossfadeStartTs !== null && it.track_id === crossfadePendingFinished;
+        var fadeOutOpacity = isFadingOut ? Math.max(0, 1 - Math.min(1, (Date.now() - crossfadeStartTs) / crossfadeFadeMs)) : null;
+        html += '<div class="app-request-item app-playlist-item' + (isCrossfadingIn ? ' is-crossfading-in' : '') + (isPauseFading ? ' is-pause-fading' : '') + '"' +
+          (fadeOutOpacity !== null ? ' style="opacity:' + fadeOutOpacity + '"' : '') +
+          ' draggable="true" data-id="' + it.id + '" data-track-id="' + it.track_id + '">' +
           '<div class="app-playlist-item__countdown"></div>' +
           '<div>' +
             '<div style="font-weight:600;">' + escapeHtml(it.title || '(ohne Titel)') + (isCurrent ? ' <span class="pnk-text-muted">▶ läuft</span>' : '') + '</div>' +
@@ -880,44 +925,83 @@
      * strengen PHP-Ausfuehrungszeitlimits. Ersetzt die bisherigen Polling-
      * Intervalle von refreshPlaylist/refreshQueue/der Reaktionsanzeige. */
     if (window.EventSource) {
-      var adminEvents = new EventSource(api('api/events.php?scope=admin'));
-      adminEvents.onmessage = function (e) {
-        var j;
-        try { j = JSON.parse(e.data); } catch (err) { return; }
-        // Kurz nach einer eigenen Playlist-Aenderung (add/remove/reorder)
-        // diese SSE-Nachricht NICHT anwenden, falls sie noch von VOR der
-        // eigenen Aktion serverseitig berechnet wurde und erst jetzt (durch
-        // Netzwerk-/Serverlast verzoegert) ankommt - sonst wuerde sie die per
-        // refreshPlaylist() bereits aktualisierte, korrekte Anzeige wieder
-        // auf den alten Stand zuruecksetzen (siehe lastLocalPlaylistMutationAt
-        // oben, Bug-Report "Entfernen hat nicht geklappt").
-        if (Date.now() - lastLocalPlaylistMutationAt > LOCAL_PLAYLIST_MUTATION_GRACE_MS) {
-          applyPlaylistJson(j);
-        }
-        renderQueue(j.requests || []);
-        applyReactionJson(j.now_playing, j.reaction_count);
+      var adminEvents = null;
 
-        if (isSlave) {
-          // Reine Anzeige aus dem Server-Status - diese Session spielt selbst
-          // nichts ab (siehe Kommentar oben bei isSlave).
-          var np = j.now_playing || {};
-          currentTrackId = np.track_id || null;
-          if (titleEl) titleEl.textContent = np.title || '-';
-          if (artistEl) artistEl.textContent = np.artist || '-';
-          npBar.hidden = !np.track_id;
-          highlightPlayingRow(np.track_id);
-        } else if (j.remote_cmd_seq !== undefined) {
-          // Fernsteuerungs-Befehl einer Slave-Session abholen und auf der
-          // eigenen (tatsaechlich spielenden) Audioquelle ausfuehren.
-          if (lastHandledRemoteSeq === null) {
-            lastHandledRemoteSeq = j.remote_cmd_seq;
-          } else if (j.remote_cmd_seq > lastHandledRemoteSeq) {
-            lastHandledRemoteSeq = j.remote_cmd_seq;
-            if (j.remote_cmd === 'prev') goToPrevious();
-            else if (j.remote_cmd === 'next') doNext();
+      function connectAdminEvents() {
+        if (adminEvents) return;
+        adminEvents = new EventSource(api('api/events.php?scope=admin'));
+        adminEvents.onmessage = function (e) {
+          var j;
+          try { j = JSON.parse(e.data); } catch (err) { return; }
+          // Kurz nach einer eigenen Playlist-Aenderung (add/remove/reorder)
+          // diese SSE-Nachricht NICHT anwenden, falls sie noch von VOR der
+          // eigenen Aktion serverseitig berechnet wurde und erst jetzt (durch
+          // Netzwerk-/Serverlast verzoegert) ankommt - sonst wuerde sie die per
+          // refreshPlaylist() bereits aktualisierte, korrekte Anzeige wieder
+          // auf den alten Stand zuruecksetzen (siehe lastLocalPlaylistMutationAt
+          // oben, Bug-Report "Entfernen hat nicht geklappt").
+          if (Date.now() - lastLocalPlaylistMutationAt > LOCAL_PLAYLIST_MUTATION_GRACE_MS) {
+            applyPlaylistJson(j);
           }
+          renderQueue(j.requests || []);
+          applyReactionJson(j.now_playing, j.reaction_count);
+
+          if (isSlave) {
+            // Reine Anzeige aus dem Server-Status - diese Session spielt selbst
+            // nichts ab (siehe Kommentar oben bei isSlave).
+            var np = j.now_playing || {};
+            currentTrackId = np.track_id || null;
+            if (titleEl) titleEl.textContent = np.title || '-';
+            if (artistEl) artistEl.textContent = np.artist || '-';
+            npBar.hidden = !np.track_id;
+            highlightPlayingRow(np.track_id);
+          } else if (j.remote_cmd_seq !== undefined) {
+            // Fernsteuerungs-Befehl einer Slave-Session abholen und auf der
+            // eigenen (tatsaechlich spielenden) Audioquelle ausfuehren.
+            if (lastHandledRemoteSeq === null) {
+              lastHandledRemoteSeq = j.remote_cmd_seq;
+            } else if (j.remote_cmd_seq > lastHandledRemoteSeq) {
+              lastHandledRemoteSeq = j.remote_cmd_seq;
+              if (j.remote_cmd === 'prev') goToPrevious();
+              else if (j.remote_cmd === 'next') doNext();
+            }
+          }
+        };
+      }
+
+      function disconnectAdminEvents() {
+        if (!adminEvents) return;
+        adminEvents.close();
+        adminEvents = null;
+      }
+
+      connectAdminEvents();
+
+      // Player.php laeuft bei vielen Partys dauerhaft in einem Hintergrund-
+      // Tab (Anzeige auf einem zweiten Bildschirm), waehrend der Admin in
+      // einem anderen Tab desselben Browsers arbeitet - z.B. beim Hochladen
+      // mehrerer grosser Dateien (siehe Uploader/initUploadWidgets). Der
+      // staendig alle paar Sekunden neu aufgebaute SSE-Stream belegt dabei
+      // durchgehend eine der wenigen von Browsern pro Server erlaubten
+      // gleichzeitigen Verbindungen (klassisches HTTP/1.1-Limit, oft 6) und
+      // bremst dadurch parallele Upload-Chunks spuerbar aus (Nutzer-Report:
+      // "Upload durchgehend langsam, Player lief im selben Browser"). Ein
+      // nicht sichtbarer Tab braucht aber ohnehin keine Echtzeit-Anzeige -
+      // Stream also pausieren, solange dieser Tab im Hintergrund ist, und
+      // beim Zurueckwechseln sofort neu verbinden plus einmalig den
+      // aktuellen Stand nachladen (sonst waere die Anzeige bis zur naechsten
+      // Nachricht kurz veraltet).
+      document.addEventListener('visibilitychange', function () {
+        if (document.hidden) {
+          disconnectAdminEvents();
+        } else {
+          connectAdminEvents();
+          refreshPlaylist();
+          fetch(api('api/now_playing.php')).then(function (r) { return r.json(); }).then(function (j) {
+            applyReactionJson({ track_id: j.track_id }, j.reaction_count);
+          });
         }
-      };
+      });
     }
 
     /** Auto-DJ-Umschalter auf player.php - Element existiert nur dort und wird bei
