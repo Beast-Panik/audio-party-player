@@ -9,6 +9,7 @@ use App\Uploader;
 
 header('Content-Type: application/json; charset=utf-8');
 Auth::requireLoginApi();
+Auth::requireAdminApi();
 
 if (!Csrf::check($_SERVER['HTTP_X_CSRF_TOKEN'] ?? null)) {
     http_response_code(400);

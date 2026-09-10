@@ -925,83 +925,44 @@
      * strengen PHP-Ausfuehrungszeitlimits. Ersetzt die bisherigen Polling-
      * Intervalle von refreshPlaylist/refreshQueue/der Reaktionsanzeige. */
     if (window.EventSource) {
-      var adminEvents = null;
-
-      function connectAdminEvents() {
-        if (adminEvents) return;
-        adminEvents = new EventSource(api('api/events.php?scope=admin'));
-        adminEvents.onmessage = function (e) {
-          var j;
-          try { j = JSON.parse(e.data); } catch (err) { return; }
-          // Kurz nach einer eigenen Playlist-Aenderung (add/remove/reorder)
-          // diese SSE-Nachricht NICHT anwenden, falls sie noch von VOR der
-          // eigenen Aktion serverseitig berechnet wurde und erst jetzt (durch
-          // Netzwerk-/Serverlast verzoegert) ankommt - sonst wuerde sie die per
-          // refreshPlaylist() bereits aktualisierte, korrekte Anzeige wieder
-          // auf den alten Stand zuruecksetzen (siehe lastLocalPlaylistMutationAt
-          // oben, Bug-Report "Entfernen hat nicht geklappt").
-          if (Date.now() - lastLocalPlaylistMutationAt > LOCAL_PLAYLIST_MUTATION_GRACE_MS) {
-            applyPlaylistJson(j);
-          }
-          renderQueue(j.requests || []);
-          applyReactionJson(j.now_playing, j.reaction_count);
-
-          if (isSlave) {
-            // Reine Anzeige aus dem Server-Status - diese Session spielt selbst
-            // nichts ab (siehe Kommentar oben bei isSlave).
-            var np = j.now_playing || {};
-            currentTrackId = np.track_id || null;
-            if (titleEl) titleEl.textContent = np.title || '-';
-            if (artistEl) artistEl.textContent = np.artist || '-';
-            npBar.hidden = !np.track_id;
-            highlightPlayingRow(np.track_id);
-          } else if (j.remote_cmd_seq !== undefined) {
-            // Fernsteuerungs-Befehl einer Slave-Session abholen und auf der
-            // eigenen (tatsaechlich spielenden) Audioquelle ausfuehren.
-            if (lastHandledRemoteSeq === null) {
-              lastHandledRemoteSeq = j.remote_cmd_seq;
-            } else if (j.remote_cmd_seq > lastHandledRemoteSeq) {
-              lastHandledRemoteSeq = j.remote_cmd_seq;
-              if (j.remote_cmd === 'prev') goToPrevious();
-              else if (j.remote_cmd === 'next') doNext();
-            }
-          }
-        };
-      }
-
-      function disconnectAdminEvents() {
-        if (!adminEvents) return;
-        adminEvents.close();
-        adminEvents = null;
-      }
-
-      connectAdminEvents();
-
-      // Player.php laeuft bei vielen Partys dauerhaft in einem Hintergrund-
-      // Tab (Anzeige auf einem zweiten Bildschirm), waehrend der Admin in
-      // einem anderen Tab desselben Browsers arbeitet - z.B. beim Hochladen
-      // mehrerer grosser Dateien (siehe Uploader/initUploadWidgets). Der
-      // staendig alle paar Sekunden neu aufgebaute SSE-Stream belegt dabei
-      // durchgehend eine der wenigen von Browsern pro Server erlaubten
-      // gleichzeitigen Verbindungen (klassisches HTTP/1.1-Limit, oft 6) und
-      // bremst dadurch parallele Upload-Chunks spuerbar aus (Nutzer-Report:
-      // "Upload durchgehend langsam, Player lief im selben Browser"). Ein
-      // nicht sichtbarer Tab braucht aber ohnehin keine Echtzeit-Anzeige -
-      // Stream also pausieren, solange dieser Tab im Hintergrund ist, und
-      // beim Zurueckwechseln sofort neu verbinden plus einmalig den
-      // aktuellen Stand nachladen (sonst waere die Anzeige bis zur naechsten
-      // Nachricht kurz veraltet).
-      document.addEventListener('visibilitychange', function () {
-        if (document.hidden) {
-          disconnectAdminEvents();
-        } else {
-          connectAdminEvents();
-          refreshPlaylist();
-          fetch(api('api/now_playing.php')).then(function (r) { return r.json(); }).then(function (j) {
-            applyReactionJson({ track_id: j.track_id }, j.reaction_count);
-          });
+      var adminEvents = new EventSource(api('api/events.php?scope=admin'));
+      adminEvents.onmessage = function (e) {
+        var j;
+        try { j = JSON.parse(e.data); } catch (err) { return; }
+        // Kurz nach einer eigenen Playlist-Aenderung (add/remove/reorder)
+        // diese SSE-Nachricht NICHT anwenden, falls sie noch von VOR der
+        // eigenen Aktion serverseitig berechnet wurde und erst jetzt (durch
+        // Netzwerk-/Serverlast verzoegert) ankommt - sonst wuerde sie die per
+        // refreshPlaylist() bereits aktualisierte, korrekte Anzeige wieder
+        // auf den alten Stand zuruecksetzen (siehe lastLocalPlaylistMutationAt
+        // oben, Bug-Report "Entfernen hat nicht geklappt").
+        if (Date.now() - lastLocalPlaylistMutationAt > LOCAL_PLAYLIST_MUTATION_GRACE_MS) {
+          applyPlaylistJson(j);
         }
-      });
+        renderQueue(j.requests || []);
+        applyReactionJson(j.now_playing, j.reaction_count);
+
+        if (isSlave) {
+          // Reine Anzeige aus dem Server-Status - diese Session spielt selbst
+          // nichts ab (siehe Kommentar oben bei isSlave).
+          var np = j.now_playing || {};
+          currentTrackId = np.track_id || null;
+          if (titleEl) titleEl.textContent = np.title || '-';
+          if (artistEl) artistEl.textContent = np.artist || '-';
+          npBar.hidden = !np.track_id;
+          highlightPlayingRow(np.track_id);
+        } else if (j.remote_cmd_seq !== undefined) {
+          // Fernsteuerungs-Befehl einer Slave-Session abholen und auf der
+          // eigenen (tatsaechlich spielenden) Audioquelle ausfuehren.
+          if (lastHandledRemoteSeq === null) {
+            lastHandledRemoteSeq = j.remote_cmd_seq;
+          } else if (j.remote_cmd_seq > lastHandledRemoteSeq) {
+            lastHandledRemoteSeq = j.remote_cmd_seq;
+            if (j.remote_cmd === 'prev') goToPrevious();
+            else if (j.remote_cmd === 'next') doNext();
+          }
+        }
+      };
     }
 
     /** Auto-DJ-Umschalter auf player.php - Element existiert nur dort und wird bei
@@ -2043,6 +2004,188 @@
   }
 
   /* ================================================================== *
+   * Gespeicherte Playlists ("Sets", admin/playlists.php) - eigenstaendig
+   * von der Live-Playlist im Player (siehe api/saved_playlists.php). Liste
+   * links, Editor (Umbenennen/Tracks hinzufuegen-entfernen-umsortieren/In
+   * Player laden/Loeschen) als Modal, komplett per AJAX ohne Seiten-Reload.
+   * ================================================================== */
+  function initSavedPlaylists() {
+    var listEl = document.getElementById('saved-playlists-list');
+    if (!listEl) return;
+
+    var nameInput = document.getElementById('new-playlist-name');
+    var createBtn = document.getElementById('btn-create-playlist');
+    var editorBackdrop = document.getElementById('playlist-editor-backdrop');
+    var editorNameInput = document.getElementById('playlist-editor-name');
+    var editorClose = document.getElementById('playlist-editor-close');
+    var editorTracksEl = document.getElementById('playlist-editor-tracks');
+    var loadBtn = document.getElementById('btn-load-into-player');
+    var deleteBtn = document.getElementById('btn-delete-playlist');
+    var searchInput = document.getElementById('playlist-editor-search');
+    var searchResultsEl = document.getElementById('playlist-editor-search-results');
+
+    var currentPlaylistId = null;
+
+    function postAction(data) {
+      data.csrf_token = CSRF;
+      return postJson(api('api/saved_playlists.php'), data);
+    }
+
+    function loadList() {
+      fetch(api('api/saved_playlists.php')).then(function (r) { return r.json(); }).then(function (j) {
+        var playlists = j.playlists || [];
+        if (!playlists.length) {
+          listEl.innerHTML = '<div class="app-empty">Noch keine Playlist gespeichert.</div>';
+          return;
+        }
+        listEl.innerHTML = playlists.map(function (p) {
+          return '<div class="app-request-item" data-id="' + p.id + '">' +
+            '<div><div style="font-weight:600;">' + escapeHtml(p.name) + '</div>' +
+            '<div class="pnk-text-muted" style="font-size:12px;">' + p.track_count + ' Track' + (p.track_count === 1 ? '' : 's') + '</div></div>' +
+            '<div style="display:flex; gap:6px;">' +
+            '<button class="pnk-btn pnk-btn--ghost pnk-btn--sm btn-open-playlist" data-id="' + p.id + '">Bearbeiten</button>' +
+            '<button class="pnk-btn pnk-btn--primary pnk-btn--sm btn-quick-load" data-id="' + p.id + '">▶ Laden</button>' +
+            '</div></div>';
+        }).join('');
+        listEl.querySelectorAll('.btn-open-playlist').forEach(function (btn) {
+          btn.addEventListener('click', function () { openEditor(parseInt(btn.getAttribute('data-id'), 10)); });
+        });
+        listEl.querySelectorAll('.btn-quick-load').forEach(function (btn) {
+          btn.addEventListener('click', function () { loadIntoPlayer(parseInt(btn.getAttribute('data-id'), 10)); });
+        });
+      });
+    }
+
+    function loadIntoPlayer(id) {
+      postAction({ action: 'load_into_player', id: id }).then(function (res) {
+        if (res.ok && res.body.ok) {
+          window.alert(res.body.added + ' Track(s) zur Player-Playlist hinzugefügt.');
+        } else {
+          window.alert((res.body && res.body.error) || 'Fehler beim Laden.');
+        }
+      });
+    }
+
+    function renderEditorTracks(tracks) {
+      if (!tracks.length) {
+        editorTracksEl.innerHTML = '<div class="app-empty" style="padding:12px;">Noch keine Tracks in dieser Playlist.</div>';
+        return;
+      }
+      editorTracksEl.innerHTML = tracks.map(function (t, i) {
+        return '<div class="app-request-item" style="border-radius:0;">' +
+          '<div><div style="font-weight:600;">' + escapeHtml(t.title || '(ohne Titel)') + '</div>' +
+          '<div class="pnk-text-muted" style="font-size:12px;">' + escapeHtml(t.artist || '') + '</div></div>' +
+          '<div style="display:flex; gap:4px;">' +
+          '<button class="pnk-btn pnk-btn--ghost pnk-btn--sm btn-move-up" type="button"' + (i === 0 ? ' disabled' : '') + '>▲</button>' +
+          '<button class="pnk-btn pnk-btn--ghost pnk-btn--sm btn-move-down" type="button"' + (i === tracks.length - 1 ? ' disabled' : '') + '>▼</button>' +
+          '<button class="pnk-btn pnk-btn--ghost pnk-btn--sm btn-remove-entry" type="button">Entfernen</button>' +
+          '</div></div>';
+      }).join('');
+
+      Array.from(editorTracksEl.children).forEach(function (row, i) {
+        var upBtn = row.querySelector('.btn-move-up');
+        var downBtn = row.querySelector('.btn-move-down');
+        var removeBtn = row.querySelector('.btn-remove-entry');
+        if (upBtn) upBtn.addEventListener('click', function () { swapAndReorder(tracks, i, i - 1); });
+        if (downBtn) downBtn.addEventListener('click', function () { swapAndReorder(tracks, i, i + 1); });
+        if (removeBtn) removeBtn.addEventListener('click', function () {
+          postAction({ action: 'remove_track', entry_id: tracks[i].entry_id }).then(function () { openEditor(currentPlaylistId); });
+        });
+      });
+    }
+
+    function swapAndReorder(tracks, i, j) {
+      var ids = tracks.map(function (t) { return t.entry_id; });
+      var tmp = ids[i]; ids[i] = ids[j]; ids[j] = tmp;
+      postAction({ action: 'reorder', id: currentPlaylistId, entry_ids: ids }).then(function () { openEditor(currentPlaylistId); });
+    }
+
+    function openEditor(id) {
+      currentPlaylistId = id;
+      fetch(api('api/saved_playlists.php?id=' + id)).then(function (r) { return r.json(); }).then(function (j) {
+        editorNameInput.value = j.name || '';
+        renderEditorTracks(j.tracks || []);
+        searchInput.value = '';
+        searchResultsEl.innerHTML = '';
+        editorBackdrop.hidden = false;
+      });
+    }
+
+    function closeEditor() {
+      editorBackdrop.hidden = true;
+      currentPlaylistId = null;
+      loadList();
+    }
+
+    if (editorClose) editorClose.addEventListener('click', closeEditor);
+    if (editorBackdrop) editorBackdrop.addEventListener('click', function (e) { if (e.target === editorBackdrop) closeEditor(); });
+
+    var renameTimer = null;
+    if (editorNameInput) {
+      editorNameInput.addEventListener('input', function () {
+        clearTimeout(renameTimer);
+        var name = editorNameInput.value.trim();
+        renameTimer = setTimeout(function () {
+          if (currentPlaylistId && name) {
+            postAction({ action: 'rename', id: currentPlaylistId, name: name });
+          }
+        }, 500);
+      });
+    }
+
+    if (loadBtn) loadBtn.addEventListener('click', function () { if (currentPlaylistId) loadIntoPlayer(currentPlaylistId); });
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', function () {
+        if (!currentPlaylistId || !window.confirm('Playlist wirklich löschen?')) return;
+        postAction({ action: 'delete', id: currentPlaylistId }).then(closeEditor);
+      });
+    }
+
+    var searchTimer = null;
+    if (searchInput) {
+      searchInput.addEventListener('input', function () {
+        clearTimeout(searchTimer);
+        var q = searchInput.value.trim();
+        if (!q) { searchResultsEl.innerHTML = ''; return; }
+        searchTimer = setTimeout(function () {
+          fetch(api('api/tracks.php?q=' + encodeURIComponent(q) + '&limit=20')).then(function (r) { return r.json(); }).then(function (j) {
+            var tracks = j.tracks || [];
+            searchResultsEl.innerHTML = tracks.length ? tracks.map(function (t) {
+              return '<div class="app-request-item" style="border-radius:0;">' +
+                '<div><div style="font-weight:600;">' + escapeHtml(t.title || '(ohne Titel)') + '</div>' +
+                '<div class="pnk-text-muted" style="font-size:12px;">' + escapeHtml(t.artist || '') + '</div></div>' +
+                '<button class="pnk-btn pnk-btn--primary pnk-btn--sm btn-add-to-editor" type="button" data-track-id="' + t.id + '">+ Hinzufügen</button>' +
+                '</div>';
+            }).join('') : '<div class="app-empty" style="padding:8px;">Keine Treffer.</div>';
+            searchResultsEl.querySelectorAll('.btn-add-to-editor').forEach(function (btn) {
+              btn.addEventListener('click', function () {
+                postAction({ action: 'add_track', id: currentPlaylistId, track_id: parseInt(btn.getAttribute('data-track-id'), 10) })
+                  .then(function () { openEditor(currentPlaylistId); });
+              });
+            });
+          });
+        }, 250);
+      });
+    }
+
+    if (createBtn) {
+      createBtn.addEventListener('click', function () {
+        var name = nameInput.value.trim();
+        if (!name) return;
+        postAction({ action: 'create', name: name }).then(function (res) {
+          if (res.ok && res.body.id) {
+            nameInput.value = '';
+            loadList();
+            openEditor(res.body.id);
+          }
+        });
+      });
+    }
+
+    loadList();
+  }
+
+  /* ================================================================== *
    * Sammelfunktion: alles, was seitenspezifisch ist (Elemente, die nur
    * auf einer bestimmten Unterseite existieren), wird hier einmal beim
    * echten Seitenaufruf UND nach jeder Soft-Navigation neu verdrahtet.
@@ -2054,6 +2197,7 @@
     initUploadWidgets();
     initFolderPicker();
     initQrLogoPreview();
+    initSavedPlaylists();
     if (window.APP_INIT_AUTO_DJ_TOGGLE) window.APP_INIT_AUTO_DJ_TOGGLE();
     if (window.APP_REFRESH_PLAYLIST) window.APP_REFRESH_PLAYLIST();
     if (window.APP_REFRESH_QUEUE) window.APP_REFRESH_QUEUE();

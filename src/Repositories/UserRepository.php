@@ -2,6 +2,7 @@
 
 namespace App\Repositories;
 
+use App\Auth;
 use App\Database;
 use App\Util;
 
@@ -31,6 +32,17 @@ final class UserRepository
     public function count(): int
     {
         return (int) Database::get()->query('SELECT COUNT(*) AS c FROM users')->fetch()['c'];
+    }
+
+    /** Zaehlt Konten mit Vollzugriff (alles ausser der eingeschraenkten
+     *  Auth::ROLE_PLAYER-Rolle) - verhindert in admin/users.php, dass das
+     *  letzte Admin-Konto geloescht wird und die App dauerhaft nur noch
+     *  eingeschraenkte Player-Konten uebrig haette. */
+    public function countAdmins(): int
+    {
+        $stmt = Database::get()->prepare('SELECT COUNT(*) AS c FROM users WHERE role != ?');
+        $stmt->execute([Auth::ROLE_PLAYER]);
+        return (int) $stmt->fetch()['c'];
     }
 
     public function create(string $username, string $password, string $role = 'admin'): int

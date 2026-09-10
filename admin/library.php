@@ -10,6 +10,7 @@ use App\Uploader;
 use App\Util;
 
 Auth::requireLogin();
+Auth::requireAdmin();
 PlayerSession::requireMasterOrRedirect();
 
 $repo = new LibraryRepository();
@@ -54,6 +55,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $repo->update($id, $name, rtrim($path, '/\\'), $recursive);
             $success = 'Bibliothek aktualisiert.';
         }
+    } elseif ($action === 'toggle_enabled') {
+        $id = (int) $_POST['id'];
+        $lib = $repo->findById($id);
+        if ($lib) {
+            $repo->setEnabled($id, !$lib['enabled']);
+            $success = $lib['enabled']
+                ? "„{$lib['name']}“ ist jetzt fuer das Set deaktiviert."
+                : "„{$lib['name']}“ ist jetzt fuer das Set aktiviert.";
+        }
     }
 }
 
@@ -68,7 +78,9 @@ require __DIR__ . '/../templates/admin_header.php';
 <p class="pnk-text-muted" style="max-width:70ch;">
   Tracks entweder direkt ueber "Hochladen" unten in den festen Upload-Ordner
   legen, oder per FTP/Datei-Manager in ein selbst verzeichnetes Verzeichnis
-  kopieren (siehe "Bibliotheken" weiter unten) und dort scannen.
+  kopieren (siehe "Bibliotheken" weiter unten) und dort scannen. Jede
+  Bibliothek laesst sich einzeln fuer das aktuelle Set deaktivieren - ihre
+  Tracks tauchen dann weder in der Player-/Gaeste-Suche noch beim Auto-DJ auf.
 </p>
 
 <?php if ($error): ?><div class="pnk-alert pnk-alert--danger" style="margin-bottom:16px;"><?= Util::e($error) ?></div><?php endif; ?>
@@ -138,11 +150,14 @@ require __DIR__ . '/../templates/admin_header.php';
   <div class="pnk-card"><div class="app-empty">Noch keine Bibliothek angelegt.</div></div>
 <?php else: ?>
   <?php foreach ($libraries as $lib): ?>
-  <?php $isUploadFolder = Uploader::isUnderRoot($lib['path']); ?>
-  <div class="pnk-card" style="margin-bottom:16px;" data-library-id="<?= (int) $lib['id'] ?>">
+  <?php $isUploadFolder = Uploader::isUnderRoot($lib['path']); $libEnabled = (bool) $lib['enabled']; ?>
+  <div class="pnk-card" style="margin-bottom:16px;<?= $libEnabled ? '' : ' opacity:0.6;' ?>" data-library-id="<?= (int) $lib['id'] ?>">
     <div class="pnk-card__header">
       <span class="pnk-card__title"><?= Util::e($lib['name']) ?></span>
-      <span class="pnk-badge"><?= (int) $lib['track_count'] ?> Songs</span>
+      <span style="display:flex; gap:6px; align-items:center;">
+        <?php if (!$libEnabled): ?><span class="pnk-badge pnk-badge--danger">Für Set deaktiviert</span><?php endif; ?>
+        <span class="pnk-badge"><?= (int) $lib['track_count'] ?> Songs</span>
+      </span>
     </div>
     <div style="font-family:var(--pnk-font-mono,monospace); font-size:12px; color:var(--pnk-text-muted); margin-bottom:12px;">
       <?= Util::e($lib['path']) ?> · <?= $lib['recursive'] ? 'inkl. Unterordner' : 'nur oberste Ebene' ?>
@@ -156,6 +171,14 @@ require __DIR__ . '/../templates/admin_header.php';
 
     <div style="display:flex; gap:8px; flex-wrap:wrap;">
       <button class="pnk-btn pnk-btn--primary btn-scan" type="button" data-library-id="<?= (int) $lib['id'] ?>">Scan starten</button>
+      <form method="post" action="<?= app_url('admin/library.php') ?>" style="display:inline;">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="toggle_enabled">
+        <input type="hidden" name="id" value="<?= (int) $lib['id'] ?>">
+        <button class="pnk-btn pnk-btn--ghost" type="submit" title="Legt fest, ob diese Bibliothek fuer die Player-Suche und den Auto-DJ zur Verfuegung steht">
+          <?= $libEnabled ? 'Für dieses Set deaktivieren' : 'Für dieses Set aktivieren' ?>
+        </button>
+      </form>
       <?php $confirmMsg = $isUploadFolder
         ? 'Diesen hochgeladenen Ordner wirklich entfernen? Alle zugehoerigen Songs UND die Dateien auf der Platte werden geloescht.'
         : 'Bibliothek inkl. aller zugehoerigen Songs wirklich entfernen? Dateien auf der Platte bleiben unberuehrt.'; ?>

@@ -81,4 +81,13 @@ final class LibraryRepository
         $stmt = Database::get()->prepare('UPDATE libraries SET last_scanned_at = ?, track_count = ? WHERE id = ?');
         $stmt->execute([Util::now(), $trackCount, $id]);
     }
+
+    /** Ein-/Ausschalten fuer das aktuelle Set (siehe Database::ensureSchemaOn()
+     *  Spalte "enabled") - deaktivierte Bibliotheken sind weder in Player-/
+     *  Gaeste-Suche noch fuer den Auto-DJ waehlbar. */
+    public function setEnabled(int $id, bool $enabled): void
+    {
+        $stmt = Database::get()->prepare('UPDATE libraries SET enabled = ? WHERE id = ?');
+        $stmt->execute([$enabled ? 1 : 0, $id]);
+    }
 }

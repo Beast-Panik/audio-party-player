@@ -147,16 +147,23 @@ final class TrackRepository
      * Ohne $seed (z.B. andere Aufrufer) bleibt das alte Verhalten (echtes
      * RANDOM() je Aufruf) unveraendert.
      */
+    // Tracks aus abgeschalteten Bibliotheken (siehe LibraryRepository::
+    // setEnabled(), Setting "fuer das aktuelle Set verfuegbar") tauchen
+    // weder in der Player-/Gaeste-Suche noch beim Auto-DJ auf - dieser
+    // Ausschluss gilt daher IMMER, nicht optional.
+    private const ENABLED_LIBRARY_CONDITION = 'library_id IN (SELECT id FROM libraries WHERE enabled = 1)';
+
     public function search(string $query = '', int $limit = 100, int $offset = 0, ?string $startsWith = null, ?int $seed = null): array
     {
         $pdo = Database::get();
         $query = trim($query);
         $startsWith = $startsWith !== null ? trim($startsWith) : null;
+        $enabledCond = self::ENABLED_LIBRARY_CONDITION;
 
         if ($startsWith !== null && $startsWith !== '') {
             $like = str_replace(['%', '_'], ['\%', '\_'], $startsWith) . '%';
             $stmt = $pdo->prepare(
-                "SELECT * FROM tracks WHERE LOWER(title) LIKE LOWER(?) ESCAPE '\\'
+                "SELECT * FROM tracks WHERE {$enabledCond} AND LOWER(title) LIKE LOWER(?) ESCAPE '\\'
                  ORDER BY title, artist, album, track_no LIMIT ? OFFSET ?"
             );
             $stmt->bindValue(1, $like);
@@ -172,7 +179,8 @@ final class TrackRepository
                 // Hash statt echtem RANDOM() - bleibt fuer denselben Seed ueber
                 // mehrere LIMIT/OFFSET-Aufrufe stabil (siehe Docblock oben).
                 $stmt = $pdo->prepare(
-                    'SELECT * FROM tracks ORDER BY ((id * 2654435761) + ?) % 1000000007 LIMIT ? OFFSET ?'
+                    "SELECT * FROM tracks WHERE {$enabledCond}
+                     ORDER BY ((id * 2654435761) + ?) % 1000000007 LIMIT ? OFFSET ?"
                 );
                 $stmt->bindValue(1, $seed, \PDO::PARAM_INT);
                 $stmt->bindValue(2, $limit, \PDO::PARAM_INT);
@@ -181,7 +189,7 @@ final class TrackRepository
                 return $stmt->fetchAll();
             }
             $randomFn = Database::driver() === 'mysql' ? 'RAND()' : 'RANDOM()';
-            $stmt = $pdo->prepare("SELECT * FROM tracks ORDER BY {$randomFn} LIMIT ? OFFSET ?");
+            $stmt = $pdo->prepare("SELECT * FROM tracks WHERE {$enabledCond} ORDER BY {$randomFn} LIMIT ? OFFSET ?");
             $stmt->bindValue(1, $limit, \PDO::PARAM_INT);
             $stmt->bindValue(2, $offset, \PDO::PARAM_INT);
             $stmt->execute();
@@ -190,10 +198,11 @@ final class TrackRepository
 
         $like = '%' . str_replace(['%', '_'], ['\%', '\_'], $query) . '%';
         $sql = "SELECT * FROM tracks
-                WHERE LOWER(title) LIKE LOWER(?) ESCAPE '\\'
+                WHERE {$enabledCond}
+                  AND (LOWER(title) LIKE LOWER(?) ESCAPE '\\'
                    OR LOWER(artist) LIKE LOWER(?) ESCAPE '\\'
                    OR LOWER(album) LIKE LOWER(?) ESCAPE '\\'
-                   OR CAST(year AS CHAR) LIKE ?
+                   OR CAST(year AS CHAR) LIKE ?)
                 ORDER BY artist, album, track_no, title
                 LIMIT ? OFFSET ?";
         $stmt = $pdo->prepare($sql);
@@ -209,7 +218,8 @@ final class TrackRepository
 
     public function countAll(): int
     {
-        return (int) Database::get()->query('SELECT COUNT(*) AS c FROM tracks')->fetch()['c'];
+        $sql = 'SELECT COUNT(*) AS c FROM tracks WHERE ' . self::ENABLED_LIBRARY_CONDITION;
+        return (int) Database::get()->query($sql)->fetch()['c'];
     }
 
     /**

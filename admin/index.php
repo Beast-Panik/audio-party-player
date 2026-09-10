@@ -11,6 +11,7 @@ use App\Repositories\UserRepository;
 use App\Util;
 
 Auth::requireLogin();
+Auth::requireAdmin();
 PlayerSession::requireMasterOrRedirect();
 
 $pageTitle = 'Uebersicht';

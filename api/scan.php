@@ -8,6 +8,7 @@ use App\Scanner;
 
 header('Content-Type: application/json; charset=utf-8');
 Auth::requireLoginApi();
+Auth::requireAdminApi();
 
 $input = json_decode(file_get_contents('php://input'), true) ?? $_POST;
 $token = $input['csrf_token'] ?? ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? null);

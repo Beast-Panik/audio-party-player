@@ -242,7 +242,9 @@ final class PlaylistRepository
      * Fuellt die Playlist auf, sofern sie unter der in den Einstellungen
      * festgelegten Zielanzahl (Setting auto_dj_target_count, 0-15, Standard 3)
      * liegt: fuegt noch nicht (oder am laengsten nicht mehr) gespielte Tracks
-     * aus der Bibliothek hinzu, bis das Ziel erreicht ist. Anders als eine
+     * aus der Bibliothek hinzu, bis das Ziel erreicht ist. Die Zielanzahl
+     * bezieht sich dabei auf kommende Tracks - der gerade laufende (falls
+     * einer in der Playlist steht) zaehlt nicht mit. Anders als eine
      * getrennte "Mindest-/Zielspanne" wird hier IMMER exakt auf die eine
      * konfigurierte Zahl aufgefuellt - sobald ein Track abgespielt wird und
      * die Playlist dadurch unter das Ziel faellt, ergaenzt der naechste
@@ -265,16 +267,25 @@ final class PlaylistRepository
      */
     public function topUp(): int
     {
-        $targetCount = max(0, min(15, (int) (new SettingRepository())->get('auto_dj_target_count', '3')));
-        $current = $this->count();
-        if ($current >= $targetCount) {
-            return 0;
-        }
-        $addCount = $targetCount - $current;
+        $settings = new SettingRepository();
+        $targetCount = max(0, min(15, (int) $settings->get('auto_dj_target_count', '3')));
 
         $pdo = Database::get();
         $playlistItems = $this->all();
         $existingIds = array_column($playlistItems, 'track_id');
+
+        // Der gerade laufende Track bleibt bis zum naechsten Advance als
+        // eigene Zeile in der Playlist stehen (siehe renderPlaylist/isCurrent
+        // in app.js) - fuer die Zielanzahl zaehlt er aber nicht mit, sonst
+        // waeren bei target_count=3 effektiv nur noch 2 kommende Tracks in
+        // der Warteschlange, sobald einer davon zu "jetzt laeuft" wird.
+        $nowPlayingTrackId = (int) $settings->get('now_playing_track_id', '0');
+        $current = count($existingIds) - ($nowPlayingTrackId && in_array($nowPlayingTrackId, $existingIds, true) ? 1 : 0);
+
+        if ($current >= $targetCount) {
+            return 0;
+        }
+        $addCount = $targetCount - $current;
 
         // Kuerzlich gespielte Tracks (Sperrfrist, Setting recent_played_lock_hours)
         // stehen dem Auto-DJ nicht zur Verfuegung, ausser der Admin hat sie
@@ -326,7 +337,9 @@ final class PlaylistRepository
      * $cutoff === null ignoriert die Sperrfrist komplett (letzter Ausweg, siehe topUp()). */
     private function pickCandidate(\PDO $pdo, array $excludeIds, ?string $cutoff, ?string $avoidArtist): ?array
     {
-        $conditions = [];
+        // Tracks aus fuer das aktuelle Set abgeschalteten Bibliotheken (siehe
+        // LibraryRepository::setEnabled()) sind fuer den Auto-DJ nie waehlbar.
+        $conditions = ['library_id IN (SELECT id FROM libraries WHERE enabled = 1)'];
         $params = [];
         if (!empty($excludeIds)) {
             $conditions[] = 'id NOT IN (' . implode(',', array_fill(0, count($excludeIds), '?')) . ')';

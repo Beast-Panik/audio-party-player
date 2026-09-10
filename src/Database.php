@@ -21,7 +21,7 @@ final class Database
      * hoehere Code-Version, schickt einen angemeldeten Admin automatisch zu
      * install.php und die Migration laeuft dort erst nach einem Klick.
      */
-    public const SCHEMA_VERSION = 8;
+    public const SCHEMA_VERSION = 9;
 
     public static function get(): \PDO
     {
@@ -133,6 +133,12 @@ final class Database
         // reagieren kann und beim erneuten Abspielen wieder darf.
         self::ensureColumn($pdo, $driver, 'tracks', 'play_seq', $driver === 'mysql' ? 'INT NOT NULL DEFAULT 0' : 'INTEGER NOT NULL DEFAULT 0');
         self::ensureColumn($pdo, $driver, 'track_reactions', 'play_seq', $driver === 'mysql' ? 'INT NOT NULL DEFAULT 0' : 'INTEGER NOT NULL DEFAULT 0');
+        // Bibliotheken lassen sich einzeln fuer das aktuelle Set aktivieren/
+        // deaktivieren (admin/library.php) - deaktivierte Bibliotheken sind
+        // weder in Player-/Gaeste-Suche noch fuer den Auto-DJ waehlbar (siehe
+        // TrackRepository::search()/countAll(), PlaylistRepository::pickCandidate()).
+        // Default 1, damit bestehende Bibliotheken beim Update aktiv bleiben.
+        self::ensureColumn($pdo, $driver, 'libraries', 'enabled', $driver === 'mysql' ? 'INT NOT NULL DEFAULT 1' : 'INTEGER NOT NULL DEFAULT 1');
 
         self::runStatements($pdo, [
             $driver === 'mysql'
@@ -314,6 +320,29 @@ final class Database
             request_id {$int},
             created_at {$datetimeNotNull}
         ){$engine}";
+
+        // Gespeicherte Playlists ("Sets") - eigenstaendig von der Live-Playlist
+        // (Tabelle "playlist" oben, das ist die aktuelle Abspiel-Warteschlange):
+        // eine benannte, wiederverwendbare Zusammenstellung von Tracks, die
+        // sich per Klick komplett an das Ende der Live-Playlist anhaengen
+        // laesst (siehe admin/playlists.php, api/saved_playlists.php).
+        $statements[] = "CREATE TABLE IF NOT EXISTS saved_playlists (
+            id {$pk},
+            name {$varchar190} NOT NULL,
+            created_at {$datetimeNotNull},
+            updated_at {$datetimeNotNull}
+        ){$engine}";
+
+        $statements[] = "CREATE TABLE IF NOT EXISTS saved_playlist_tracks (
+            id {$pk},
+            saved_playlist_id {$int} NOT NULL,
+            track_id {$int} NOT NULL,
+            position {$int} NOT NULL DEFAULT 0,
+            created_at {$datetimeNotNull}
+        ){$engine}";
+        $statements[] = $isMysql
+            ? "CREATE INDEX idx_saved_playlist_tracks_playlist ON saved_playlist_tracks (saved_playlist_id)"
+            : "CREATE INDEX IF NOT EXISTS idx_saved_playlist_tracks_playlist ON saved_playlist_tracks (saved_playlist_id)";
 
         $statements[] = "CREATE TABLE IF NOT EXISTS settings (
             setting_key {$varchar190} NOT NULL,

@@ -24,6 +24,10 @@ $playlistCountForNav = Auth::isLoggedIn() ? (new PlaylistRepository())->count() 
 // gerade frei/verwaist ist. $isSlave steuert unten, welche Menuepunkte und
 // Bedienelemente eine zweite gleichzeitig eingeloggte Session zu sehen bekommt.
 $isSlave = Auth::isLoggedIn() && !PlayerSession::touch();
+// Eingeschraenkte Rolle (Auth::ROLE_PLAYER) - darf nur Player + Wunschliste
+// sehen, keine Bibliotheks-/Benutzer-/Einstellungsverwaltung und keine
+// party-weiten Steuerelemente (ON-AIR-Schalter, Player-Sperre einrichten).
+$isLimitedRole = Auth::isLoggedIn() && !Auth::isAdmin();
 
 if (!function_exists('app_icon_paths')) {
     /**
@@ -45,6 +49,7 @@ if (!function_exists('app_icon_paths')) {
             'key' => '<circle cx="8" cy="14" r="4"/><path d="M11 11 20 2M17 5l2 2M14 8l2 2"/>',
             'folder' => '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>',
             'upload' => '<path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 16v3a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3"/>',
+            'playlists' => '<line x1="8" y1="6" x2="20" y2="6"/><line x1="8" y1="12" x2="20" y2="12"/><line x1="8" y1="18" x2="20" y2="18"/><circle cx="4" cy="6" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="12" r="1.4" fill="currentColor" stroke="none"/><circle cx="4" cy="18" r="1.4" fill="currentColor" stroke="none"/>',
         ];
         return $icons[$name] ?? '';
     }
@@ -183,17 +188,18 @@ if (!function_exists('nav_item')) {
       <?= nav_item('requests', app_url('admin/requests.php'), 'Wunschliste', $activeNav, 'wishlist') ?>
       <?php endif; ?>
     </nav>
-    <?php if (!$isSlave): ?>
+    <?php if (!$isSlave && !$isLimitedRole): ?>
     <h6 class="app-sidebar-heading">Verwaltung</h6>
     <nav class="pnk-nav">
       <?= nav_item('dashboard', app_url('admin/index.php'), 'Uebersicht', $activeNav, 'dashboard') ?>
       <?= nav_item('library', app_url('admin/library.php'), 'Bibliothek', $activeNav, 'library') ?>
+      <?= nav_item('playlists', app_url('admin/playlists.php'), 'Playlists', $activeNav, 'playlists') ?>
       <?= nav_item('users', app_url('admin/users.php'), 'Benutzer', $activeNav, 'users') ?>
       <?= nav_item('settings', app_url('admin/settings.php'), 'Einstellungen', $activeNav, 'settings') ?>
     </nav>
     <?php endif; ?>
 
-    <?php if (Auth::isLoggedIn() && !$isSlave): ?>
+    <?php if (Auth::isLoggedIn() && !$isSlave && !$isLimitedRole): ?>
     <div class="app-sidebar-bottom">
       <button class="pnk-nav-item app-nav-btn app-live-toggle-btn <?= $appLive ? 'is-live' : 'is-offline' ?>" id="btn-live-toggle" type="button" title="<?= $appLive ? 'Party beenden (offline gehen) - setzt Gäste-/Wunschdaten zurück' : 'Party starten (live gehen) - setzt Gäste-/Wunschdaten zurück' ?>">
         <span class="app-live-toggle-dot" aria-hidden="true"></span>

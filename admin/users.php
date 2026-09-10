@@ -9,6 +9,7 @@ use App\Repositories\UserRepository;
 use App\Util;
 
 Auth::requireLogin();
+Auth::requireAdmin();
 PlayerSession::requireMasterOrRedirect();
 
 $repo = new UserRepository();
@@ -37,6 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'create') {
         $username = trim($_POST['username'] ?? '');
         $password = (string) ($_POST['password'] ?? '');
+        $role = ($_POST['role'] ?? '') === Auth::ROLE_PLAYER ? Auth::ROLE_PLAYER : 'admin';
         if (!currentPasswordConfirmed($repo)) {
             $error = 'Zur Bestaetigung bitte dein aktuelles Passwort eingeben.';
         } elseif ($username === '' || strlen($password) < 8) {
@@ -44,15 +46,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($repo->usernameExists($username)) {
             $error = 'Dieser Benutzername existiert bereits.';
         } else {
-            $repo->create($username, $password, 'admin');
-            $success = "Admin-Konto „{$username}“ angelegt.";
+            $repo->create($username, $password, $role);
+            $roleLabel = $role === Auth::ROLE_PLAYER ? 'Player-Konto' : 'Admin-Konto';
+            $success = "{$roleLabel} „{$username}“ angelegt.";
         }
     } elseif ($action === 'delete') {
         $id = (int) $_POST['id'];
+        $target = $repo->findById($id);
         if ($id === Auth::userId()) {
             $error = 'Du kannst dein eigenes Konto nicht loeschen.';
         } elseif ($repo->count() <= 1) {
             $error = 'Das letzte verbleibende Konto kann nicht geloescht werden.';
+        } elseif ($target && $target['role'] !== Auth::ROLE_PLAYER && $repo->countAdmins() <= 1) {
+            $error = 'Das letzte Admin-Konto kann nicht geloescht werden.';
         } else {
             $repo->delete($id);
             $success = 'Konto geloescht.';
@@ -80,20 +86,22 @@ require __DIR__ . '/../templates/admin_header.php';
 
 <h2 style="margin-top:0;">Benutzer</h2>
 <p class="pnk-text-muted" style="max-width:70ch;">
-  Es gibt hier nur Admin-Konten. Gäste benoetigen keinen Account - jeder,
-  der die Wunsch-Seite oeffnet, ist automatisch "Gast" und kann Songs
-  wünschen, ohne sich anzumelden.
+  Admin-Konten haben vollen Zugriff (Bibliothek, Einstellungen, Benutzer).
+  Player-Konten duerfen nur den Player und die Wunschliste bedienen - kein
+  Upload, keine Bibliotheks- oder Benutzerverwaltung, keine Einstellungen.
+  Gäste benoetigen keinen Account - jeder, der die Wunsch-Seite oeffnet, ist
+  automatisch "Gast" und kann Songs wünschen, ohne sich anzumelden.
 </p>
 
 <?php if ($error): ?><div class="pnk-alert pnk-alert--danger" style="margin-bottom:16px;"><?= Util::e($error) ?></div><?php endif; ?>
 <?php if ($success): ?><div class="pnk-alert pnk-alert--success" style="margin-bottom:16px;"><?= Util::e($success) ?></div><?php endif; ?>
 
 <div class="pnk-card" style="margin-bottom:20px;">
-  <div class="pnk-card__header"><span class="pnk-card__title">Neuen Admin anlegen</span></div>
+  <div class="pnk-card__header"><span class="pnk-card__title">Neuen Benutzer anlegen</span></div>
   <form method="post" action="<?= app_url('admin/users.php') ?>">
     <?= Csrf::field() ?>
     <input type="hidden" name="action" value="create">
-    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;">
       <div>
         <label class="pnk-label">Benutzername</label>
         <input class="pnk-input" type="text" name="username" required>
@@ -101,6 +109,13 @@ require __DIR__ . '/../templates/admin_header.php';
       <div>
         <label class="pnk-label">Passwort (min. 8 Zeichen)</label>
         <input class="pnk-input" type="password" name="password" minlength="8" required>
+      </div>
+      <div>
+        <label class="pnk-label">Rolle</label>
+        <select class="pnk-input" name="role">
+          <option value="admin">Admin (Vollzugriff)</option>
+          <option value="<?= Auth::ROLE_PLAYER ?>">Player (nur Player + Wunschliste)</option>
+        </select>
       </div>
     </div>
     <label class="pnk-label" style="margin-top:12px;">Dein aktuelles Passwort (zur Bestätigung)</label>
@@ -112,11 +127,12 @@ require __DIR__ . '/../templates/admin_header.php';
 <div class="pnk-card">
   <div class="pnk-card__header"><span class="pnk-card__title">Konten</span></div>
   <table class="pnk-table">
-    <thead><tr><th>Benutzername</th><th>Angelegt</th><th>Letzte Anmeldung</th><th></th></tr></thead>
+    <thead><tr><th>Benutzername</th><th>Rolle</th><th>Angelegt</th><th>Letzte Anmeldung</th><th></th></tr></thead>
     <tbody>
       <?php foreach ($users as $u): ?>
       <tr>
         <td><?= Util::e($u['username']) ?><?= $u['id'] == Auth::userId() ? ' <span class="pnk-badge pnk-badge--accent">Du</span>' : '' ?></td>
+        <td><?= $u['role'] === Auth::ROLE_PLAYER ? '<span class="pnk-badge">Player</span>' : '<span class="pnk-badge pnk-badge--warm">Admin</span>' ?></td>
         <td><?= Util::e($u['created_at']) ?></td>
         <td><?= Util::e($u['last_login_at'] ?? '-') ?></td>
         <td style="display:flex; gap:6px; justify-content:flex-end;">

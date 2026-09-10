@@ -45,6 +45,7 @@
 .app-nav-icon--wishlist{ color: var(--pnk-accent-warm); }
 .app-nav-icon--dashboard{ color: var(--pnk-success); }
 .app-nav-icon--library { color: var(--pnk-warning); }
+.app-nav-icon--playlists{ color: var(--pnk-danger); }
 .app-nav-icon--users   { color: var(--pnk-text-link); }
 .app-nav-icon--settings{ color: var(--pnk-text-muted); }
 .app-nav-icon--lock,

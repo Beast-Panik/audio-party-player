@@ -11,6 +11,7 @@ use App\Auth;
 
 header('Content-Type: application/json; charset=utf-8');
 Auth::requireLoginApi();
+Auth::requireAdminApi();
 
 function json_fail(int $code, string $message): void
 {

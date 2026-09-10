@@ -11,6 +11,7 @@ use App\Repositories\SettingRepository;
 use App\Util;
 
 Auth::requireLogin();
+Auth::requireAdmin();
 PlayerSession::requireMasterOrRedirect();
 
 $settings = new SettingRepository();
@@ -317,12 +318,13 @@ require __DIR__ . '/../templates/admin_header.php';
         </div>
       </div>
       <div style="margin-top:16px;">
-        <label class="pnk-label">Auto-DJ: Ziel-Anzahl Tracks in der Playlist</label>
+        <label class="pnk-label">Auto-DJ: Ziel-Anzahl kommender Tracks in der Playlist</label>
         <input class="pnk-input" type="number" min="0" max="15" step="1" name="auto_dj_target_count" value="<?= (int) $autoDjTargetCount ?>" style="max-width:120px;">
         <p class="pnk-text-muted" style="font-size:12px; margin:6px 0 0;">
-          Der Auto-DJ haelt die Playlist staendig auf dieser Anzahl (0-15): sobald sie
-          durch Abspielen darunter faellt, wird sofort automatisch der naechste Track
-          ergaenzt. 0 = Auto-DJ füllt nichts automatisch nach (Gastwünsche werden trotzdem
+          Der Auto-DJ haelt die Playlist staendig auf dieser Anzahl (0-15) an noch
+          kommenden Tracks - der gerade laufende zaehlt nicht mit. Sobald sie durch
+          Abspielen darunter faellt, wird sofort automatisch der naechste Track ergaenzt.
+          0 = Auto-DJ füllt nichts automatisch nach (Gastwünsche werden trotzdem
           angenommen, wenn Auto-DJ aktiv ist).
         </p>
       </div>

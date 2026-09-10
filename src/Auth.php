@@ -16,6 +16,12 @@ final class Auth
     // vs. echter bcrypt-Vergleich) erkennbar, welche Benutzernamen existieren.
     private const DUMMY_HASH = '$2y$10$abcdefghijklmnopqrstuuVGXjE0N4h1v6Z5f2z8W1p1e1c1s1e1s.a';
 
+    // Eingeschraenkte Rolle: darf nur Player + Wunschliste bedienen (kein
+    // Upload, keine Bibliotheksverwaltung, keine Einstellungen, keine
+    // Benutzerverwaltung). Jede andere/fehlende Rolle (insbesondere 'admin',
+    // der Spalten-Default in der DB) gilt als Vollzugriff - siehe isAdmin().
+    public const ROLE_PLAYER = 'player';
+
     public static function attempt(string $username, string $password): bool
     {
         $user = (new UserRepository())->findByUsername($username);
@@ -27,6 +33,7 @@ final class Auth
         session_regenerate_id(true);
         $_SESSION['user_id'] = (int) $user['id'];
         $_SESSION['username'] = $user['username'];
+        $_SESSION['role'] = $user['role'];
         (new UserRepository())->touchLogin((int) $user['id']);
         return true;
     }
@@ -57,11 +64,36 @@ final class Auth
         return $_SESSION['username'] ?? null;
     }
 
+    public static function role(): ?string
+    {
+        return $_SESSION['role'] ?? null;
+    }
+
+    /** Vollzugriff (Upload/Bibliothek/Einstellungen/Benutzer) - alles ausser
+     *  der expliziten eingeschraenkten Rolle gilt als Admin (siehe ROLE_PLAYER),
+     *  damit bestehende Sessions/Konten ohne gesetzte Rolle nicht ploetzlich
+     *  ausgesperrt werden. */
+    public static function isAdmin(): bool
+    {
+        return self::role() !== self::ROLE_PLAYER;
+    }
+
     /** Beendet die Anfrage mit 403/Redirect, falls nicht eingeloggt. */
     public static function requireLogin(): void
     {
         if (!self::isLoggedIn()) {
             header('Location: ' . app_url('login.php'));
+            exit;
+        }
+    }
+
+    /** Schickt eine eingeschraenkte (Nicht-Admin-)Session zurueck zum Player -
+     *  fuer Seiten, die nur der Vollzugriff sehen darf (Bibliothek/Einstellungen/
+     *  Benutzer). Nach requireLogin() aufrufen. */
+    public static function requireAdmin(): void
+    {
+        if (!self::isAdmin()) {
+            header('Location: ' . app_url('player.php'));
             exit;
         }
     }
@@ -72,6 +104,17 @@ final class Auth
             http_response_code(401);
             header('Content-Type: application/json; charset=utf-8');
             echo json_encode(['error' => 'Nicht angemeldet.']);
+            exit;
+        }
+    }
+
+    /** API-Gegenstueck zu requireAdmin() - nach requireLoginApi() aufrufen. */
+    public static function requireAdminApi(): void
+    {
+        if (!self::isAdmin()) {
+            http_response_code(403);
+            header('Content-Type: application/json; charset=utf-8');
+            echo json_encode(['error' => 'Keine Berechtigung.']);
             exit;
         }
     }
