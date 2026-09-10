@@ -103,6 +103,10 @@
     var activeAudio = audioA;
     var standbyAudio = audioB;
     var currentTrackId = null;
+    // Letzter Zeitpunkt eines Positions-Speicherns via 'timeupdate' (siehe
+    // saveNowPlaying/lastSavedPositionAt unten) - drosselt die sonst mehrmals
+    // pro Sekunde laufenden, synchronen localStorage-Schreibvorgaenge.
+    var lastSavedPositionAt = 0;
     var autoDjEnabled = false;
     var crossfadeEnabled = false;
     var crossfadeSeconds = 3;
@@ -629,7 +633,18 @@
         updateCurrentPlaylistProgress();
         updateCountdown();
         maybeStartCrossfade();
-        saveNowPlaying();
+        // 'timeupdate' feuert mehrmals pro Sekunde - der synchrone
+        // localStorage-Schreibvorgang in saveNowPlaying() dabei jedes Mal
+        // mitlaufen zu lassen, belastet den Hauptthread staendig unnoetig
+        // (die Position muss fuer die Wiederherstellung nach einem Reload
+        // nicht sekundengenau sein). Andere saveNowPlaying()-Aufrufe (Pause,
+        // Trackwechsel) bleiben davon unberuehrt und speichern weiterhin
+        // sofort.
+        var nowTs = Date.now();
+        if (nowTs - lastSavedPositionAt >= 2000) {
+          lastSavedPositionAt = nowTs;
+          saveNowPlaying();
+        }
       });
     });
 
@@ -969,7 +984,7 @@
 
     function trackRowHtml(t) {
       return '<div class="app-track-row" data-id="' + t.id + '">' +
-        '<div class="app-track-row__cover">' + (t.has_cover ? '<img src="' + api('api/cover.php?id=' + t.id) + '" alt="">' : '') + '</div>' +
+        '<div class="app-track-row__cover">' + (t.has_cover ? '<img src="' + api('api/cover.php?id=' + t.id) + '" alt="" loading="lazy">' : '') + '</div>' +
         '<div class="app-track-row__title">' + escapeHtml(t.title || t.filename || '(ohne Titel)') +
           (t.locked ? ' <span class="pnk-badge" title="Kürzlich gespielt">🔒</span>' : '') + '</div>' +
         '<div class="app-track-row__sub app-track-row__sub--meta">' + escapeHtml(t.artist || '') + (t.album ? ' · ' + escapeHtml(t.album) : '') + '</div>' +

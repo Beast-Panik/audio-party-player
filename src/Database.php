@@ -21,7 +21,7 @@ final class Database
      * hoehere Code-Version, schickt einen angemeldeten Admin automatisch zu
      * install.php und die Migration laeuft dort erst nach einem Klick.
      */
-    public const SCHEMA_VERSION = 7;
+    public const SCHEMA_VERSION = 8;
 
     public static function get(): \PDO
     {
@@ -138,6 +138,18 @@ final class Database
             $driver === 'mysql'
                 ? 'CREATE INDEX idx_requests_guest_token ON requests (guest_token)'
                 : 'CREATE INDEX IF NOT EXISTS idx_requests_guest_token ON requests (guest_token)',
+            // last_played_at wird bei JEDER Auto-DJ-Track-Auswahl (Sortierung
+            // "am laengsten nicht gespielt zuerst", siehe PlaylistRepository::
+            // pickCandidate()) und bei der alle 8s abgefragten "Kuerzlich
+            // gespielt"-Liste (TrackRepository::listRecentlyPlayed()) als
+            // ORDER BY-Spalte gebraucht. Ohne Index bedeutet das bei jedem
+            // Trackwechsel/Skip einen kompletten Tabellen-Scan+Sortierung
+            // ueber die ganze Bibliothek - bei kleinen Bibliotheken (vor dem
+            // Upload-Feature) kaum spuerbar, bei groesseren spuerbar traege
+            // (siehe Nutzer-Report "Entfernen dauert mehrere Sekunden").
+            $driver === 'mysql'
+                ? 'CREATE INDEX idx_tracks_last_played ON tracks (last_played_at)'
+                : 'CREATE INDEX IF NOT EXISTS idx_tracks_last_played ON tracks (last_played_at)',
         ]);
 
         self::backfillPlaylistPositions($pdo);
