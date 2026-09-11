@@ -6,7 +6,6 @@ use App\Auth;
 use App\PlayerSession;
 
 Auth::requireLogin();
-Auth::requireAdmin();
 PlayerSession::requireMasterOrRedirect();
 
 $pageTitle = 'Playlists';

@@ -186,6 +186,7 @@ if (!function_exists('nav_item')) {
       </div>
       <?php if (!$isSlave): ?>
       <?= nav_item('requests', app_url('admin/requests.php'), 'Wunschliste', $activeNav, 'wishlist') ?>
+      <?= nav_item('playlists', app_url('admin/playlists.php'), 'Playlists', $activeNav, 'playlists') ?>
       <?php endif; ?>
     </nav>
     <?php if (!$isSlave && !$isLimitedRole): ?>
@@ -193,13 +194,12 @@ if (!function_exists('nav_item')) {
     <nav class="pnk-nav">
       <?= nav_item('dashboard', app_url('admin/index.php'), 'Uebersicht', $activeNav, 'dashboard') ?>
       <?= nav_item('library', app_url('admin/library.php'), 'Bibliothek', $activeNav, 'library') ?>
-      <?= nav_item('playlists', app_url('admin/playlists.php'), 'Playlists', $activeNav, 'playlists') ?>
       <?= nav_item('users', app_url('admin/users.php'), 'Benutzer', $activeNav, 'users') ?>
       <?= nav_item('settings', app_url('admin/settings.php'), 'Einstellungen', $activeNav, 'settings') ?>
     </nav>
     <?php endif; ?>
 
-    <?php if (Auth::isLoggedIn() && !$isSlave && !$isLimitedRole): ?>
+    <?php if (Auth::isLoggedIn() && !$isSlave): ?>
     <div class="app-sidebar-bottom">
       <button class="pnk-nav-item app-nav-btn app-live-toggle-btn <?= $appLive ? 'is-live' : 'is-offline' ?>" id="btn-live-toggle" type="button" title="<?= $appLive ? 'Party beenden (offline gehen) - setzt Gäste-/Wunschdaten zurück' : 'Party starten (live gehen) - setzt Gäste-/Wunschdaten zurück' ?>">
         <span class="app-live-toggle-dot" aria-hidden="true"></span>
@@ -209,7 +209,7 @@ if (!function_exists('nav_item')) {
         <button class="pnk-nav-item app-nav-btn app-lock-nav-btn" id="btn-lock" type="button" title="Player sperren">
           <span class="app-nav-icon app-nav-icon--lock"><?= nav_icon_svg('lock') ?></span><span class="app-nav-label">Player sperren</span>
         </button>
-      <?php else: ?>
+      <?php elseif (!$isLimitedRole): ?>
         <a class="pnk-nav-item app-nav-btn app-lock-nav-btn" href="<?= app_url('admin/settings.php') ?>" title="PIN einrichten, um den Player sperren zu koennen">
           <span class="app-nav-icon app-nav-icon--key"><?= nav_icon_svg('key') ?></span><span class="app-nav-label">PIN einrichten</span>
         </a>

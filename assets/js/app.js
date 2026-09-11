@@ -2539,7 +2539,7 @@
     var main = document.getElementById('app-main');
     if (!main) return; // Gast-Seiten haben kein #app-main - dort bleibt alles wie gehabt.
 
-    var PJAX_PATH_RE = /\/(admin\/(index|requests|library|users|settings)\.php|player\.php)$/;
+    var PJAX_PATH_RE = /\/(admin\/(index|requests|library|playlists|users|settings)\.php|player\.php)$/;
 
     function isSoftNavUrl(url) {
       return url.origin === window.location.origin && PJAX_PATH_RE.test(url.pathname);
@@ -2586,6 +2586,11 @@
           if (!newMain) throw new Error('kein #app-main in der Antwort');
           stopPageTimers();
           document.title = doc.title;
+          // Der laufende Tab-Titel (siehe updateTabTitle oben) faellt bei
+          // pausierter Wiedergabe auf baseDocumentTitle zurueck - die ohne
+          // dieses Update noch den Titel der allerersten echten Seite dieser
+          // Sitzung haette, weil app.js bei Soft-Navigation nicht neu laedt.
+          baseDocumentTitle = doc.title;
           main.innerHTML = newMain.innerHTML;
           runPageScripts(main);
           setActiveNav(new URL(url, window.location.origin).pathname);

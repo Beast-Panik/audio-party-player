@@ -10,13 +10,13 @@ use App\Repositories\TrackRepository;
 
 /**
  * Verwaltung gespeicherter Playlists ("Sets", siehe admin/playlists.php) -
- * eigenstaendig von der Live-Playlist (api/playlist.php). Admin-only: das
- * Anlegen/Bearbeiten von Sets zaehlt wie die Bibliotheksverwaltung zu den
- * Dingen, die die eingeschraenkte Auth::ROLE_PLAYER-Rolle nicht sehen darf.
+ * eigenstaendig von der Live-Playlist (api/playlist.php). Fuer beide Rollen
+ * nutzbar (auch die eingeschraenkte Auth::ROLE_PLAYER-Rolle) - anders als
+ * Bibliotheksverwaltung/Uploads/Einstellungen zaehlt das Playlist-Feature
+ * zum Player-Funktionsumfang, siehe admin_header.php.
  */
 header('Content-Type: application/json; charset=utf-8');
 Auth::requireLoginApi();
-Auth::requireAdminApi();
 
 function json_fail(int $code, string $message): void
 {
