@@ -48,7 +48,8 @@ require __DIR__ . '/../templates/admin_header.php';
     <div id="playlist-editor-tracks" style="max-height:240px; overflow-y:auto; margin-bottom:16px; border:1px solid var(--pnk-border); border-radius:var(--pnk-radius);"></div>
     <div class="pnk-text-muted" style="font-size:12px; margin-bottom:6px;">Track hinzufügen</div>
     <input class="pnk-input" type="text" id="playlist-editor-search" placeholder="Titel oder Interpret durchsuchen…" style="margin-bottom:8px;">
-    <div id="playlist-editor-search-results" style="max-height:200px; overflow-y:auto;"></div>
+    <div class="app-jumpbar" id="playlist-editor-jump-bar" style="margin-bottom:8px;"></div>
+    <div id="playlist-editor-search-results" style="max-height:240px; overflow-y:auto;"></div>
   </div>
 </div>
 

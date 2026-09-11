@@ -2023,8 +2023,18 @@
     var deleteBtn = document.getElementById('btn-delete-playlist');
     var searchInput = document.getElementById('playlist-editor-search');
     var searchResultsEl = document.getElementById('playlist-editor-search-results');
+    var jumpBar = document.getElementById('playlist-editor-jump-bar');
 
     var currentPlaylistId = null;
+    // Durchsuchbare/scrollbare Track-Auswahl im "Track hinzufuegen"-Bereich
+    // (gleiches Browse+Sprungleisten-Muster wie initTrackList/player.php,
+    // aber ohne Cover-Grid - der Editor ist ein schmales Modal).
+    var editorPageSize = 20;
+    var editorQuery = '';
+    var editorStartsWith = null;
+    var editorOffset = 0;
+    var editorSeed = 0;
+    var editorLoadMoreBtn = null;
 
     function postAction(data) {
       data.csrf_token = CSRF;
@@ -2089,7 +2099,7 @@
         if (upBtn) upBtn.addEventListener('click', function () { swapAndReorder(tracks, i, i - 1); });
         if (downBtn) downBtn.addEventListener('click', function () { swapAndReorder(tracks, i, i + 1); });
         if (removeBtn) removeBtn.addEventListener('click', function () {
-          postAction({ action: 'remove_track', entry_id: tracks[i].entry_id }).then(function () { openEditor(currentPlaylistId); });
+          postAction({ action: 'remove_track', entry_id: tracks[i].entry_id }).then(function () { refreshPlaylistTracks(currentPlaylistId); });
         });
       });
     }
@@ -2097,7 +2107,17 @@
     function swapAndReorder(tracks, i, j) {
       var ids = tracks.map(function (t) { return t.entry_id; });
       var tmp = ids[i]; ids[i] = ids[j]; ids[j] = tmp;
-      postAction({ action: 'reorder', id: currentPlaylistId, entry_ids: ids }).then(function () { openEditor(currentPlaylistId); });
+      postAction({ action: 'reorder', id: currentPlaylistId, entry_ids: ids }).then(function () { refreshPlaylistTracks(currentPlaylistId); });
+    }
+
+    // Laedt nur die "Tracks in dieser Playlist"-Liste neu, ohne die
+    // Browse-Liste im "Track hinzufuegen"-Bereich zurueckzusetzen - sonst
+    // wuerde man beim Hinzufuegen mehrerer Tracks nach jedem Klick wieder
+    // ganz von vorn scrollen/suchen muessen.
+    function refreshPlaylistTracks(id) {
+      fetch(api('api/saved_playlists.php?id=' + id)).then(function (r) { return r.json(); }).then(function (j) {
+        renderEditorTracks(j.tracks || []);
+      });
     }
 
     function openEditor(id) {
@@ -2106,7 +2126,8 @@
         editorNameInput.value = j.name || '';
         renderEditorTracks(j.tracks || []);
         searchInput.value = '';
-        searchResultsEl.innerHTML = '';
+        if (editorJumpBarApi) editorJumpBarApi.clear();
+        loadEditorTracks('');
         editorBackdrop.hidden = false;
       });
     }
@@ -2141,30 +2162,77 @@
       });
     }
 
+    function editorTrackRowHtml(t) {
+      return '<div class="app-request-item" style="border-radius:0;" data-track-id="' + t.id + '">' +
+        '<div><div style="font-weight:600;">' + escapeHtml(t.title || '(ohne Titel)') + '</div>' +
+        '<div class="pnk-text-muted" style="font-size:12px;">' + escapeHtml(t.artist || '') + '</div></div>' +
+        '<button class="pnk-btn pnk-btn--primary pnk-btn--sm btn-add-to-editor" type="button" data-track-id="' + t.id + '">+ Hinzufügen</button>' +
+        '</div>';
+    }
+
+    function renderSearchResults(tracks, append) {
+      if (editorLoadMoreBtn) {
+        editorLoadMoreBtn.remove();
+        editorLoadMoreBtn = null;
+      }
+      if (!append) {
+        searchResultsEl.innerHTML = '';
+      }
+      if (!tracks.length) {
+        if (!append) searchResultsEl.innerHTML = '<div class="app-empty" style="padding:8px;">Keine Treffer.</div>';
+        return;
+      }
+      searchResultsEl.insertAdjacentHTML('beforeend', tracks.map(editorTrackRowHtml).join(''));
+      editorOffset += tracks.length;
+      var rows = searchResultsEl.querySelectorAll('.app-request-item[data-track-id]');
+      Array.prototype.slice.call(rows, rows.length - tracks.length).forEach(function (row) {
+        var btn = row.querySelector('.btn-add-to-editor');
+        if (btn) {
+          btn.addEventListener('click', function () {
+            postAction({ action: 'add_track', id: currentPlaylistId, track_id: parseInt(btn.getAttribute('data-track-id'), 10) })
+              .then(function () { refreshPlaylistTracks(currentPlaylistId); });
+          });
+        }
+      });
+      if (tracks.length === editorPageSize) {
+        editorLoadMoreBtn = document.createElement('button');
+        editorLoadMoreBtn.type = 'button';
+        editorLoadMoreBtn.className = 'pnk-btn pnk-btn--ghost pnk-btn--sm';
+        editorLoadMoreBtn.style.width = '100%';
+        editorLoadMoreBtn.textContent = 'Weitere Songs laden';
+        editorLoadMoreBtn.addEventListener('click', function () {
+          editorLoadMoreBtn.disabled = true;
+          loadEditorTracks(editorQuery, editorStartsWith, true);
+        });
+        searchResultsEl.appendChild(editorLoadMoreBtn);
+      }
+    }
+
+    function loadEditorTracks(q, startsWith, append) {
+      if (!append) {
+        editorQuery = q || '';
+        editorStartsWith = startsWith || null;
+        editorOffset = 0;
+        editorSeed = Math.floor(Math.random() * 1000000000);
+      }
+      var url = api('api/tracks.php?limit=' + editorPageSize + '&offset=' + editorOffset + '&seed=' + editorSeed + '&q=' + encodeURIComponent(editorQuery));
+      if (editorStartsWith) url += '&starts_with=' + encodeURIComponent(editorStartsWith);
+      fetch(url).then(function (r) { return r.json(); }).then(function (j) { renderSearchResults(j.tracks || [], !!append); });
+    }
+
+    var editorJumpBarApi = initJumpBar(jumpBar, function (ch) {
+      searchInput.value = '';
+      loadEditorTracks('', ch);
+    });
+
     var searchTimer = null;
     if (searchInput) {
       searchInput.addEventListener('input', function () {
         clearTimeout(searchTimer);
-        var q = searchInput.value.trim();
-        if (!q) { searchResultsEl.innerHTML = ''; return; }
         searchTimer = setTimeout(function () {
-          fetch(api('api/tracks.php?q=' + encodeURIComponent(q) + '&limit=20')).then(function (r) { return r.json(); }).then(function (j) {
-            var tracks = j.tracks || [];
-            searchResultsEl.innerHTML = tracks.length ? tracks.map(function (t) {
-              return '<div class="app-request-item" style="border-radius:0;">' +
-                '<div><div style="font-weight:600;">' + escapeHtml(t.title || '(ohne Titel)') + '</div>' +
-                '<div class="pnk-text-muted" style="font-size:12px;">' + escapeHtml(t.artist || '') + '</div></div>' +
-                '<button class="pnk-btn pnk-btn--primary pnk-btn--sm btn-add-to-editor" type="button" data-track-id="' + t.id + '">+ Hinzufügen</button>' +
-                '</div>';
-            }).join('') : '<div class="app-empty" style="padding:8px;">Keine Treffer.</div>';
-            searchResultsEl.querySelectorAll('.btn-add-to-editor').forEach(function (btn) {
-              btn.addEventListener('click', function () {
-                postAction({ action: 'add_track', id: currentPlaylistId, track_id: parseInt(btn.getAttribute('data-track-id'), 10) })
-                  .then(function () { openEditor(currentPlaylistId); });
-              });
-            });
-          });
-        }, 250);
+          if (editorJumpBarApi) editorJumpBarApi.clear();
+          loadEditorTracks(searchInput.value);
+        }, 120);
       });
     }
 
