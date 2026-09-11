@@ -24,6 +24,13 @@ Kontrolle behältst: annehmen, ablehnen, Auto-DJ machen lassen oder selbst
 auflegen. Kein Spotify-Account, kein Cloud-Dienst, kein Docker, kein
 Composer - einfach hochladen und loslegen.
 
+<p align="center">
+  <a href="assets/img/screenshots/player.png"><img src="assets/img/screenshots/player-thumb.png" width="270" alt="Admin-Player mit Playlist und Wunschliste"></a>
+  <a href="assets/img/screenshots/wunschliste.png"><img src="assets/img/screenshots/wunschliste-thumb.png" width="270" alt="Öffentliche Gäste-Wunschseite"></a>
+  <a href="assets/img/screenshots/display.png"><img src="assets/img/screenshots/display-thumb.png" width="270" alt="Anzeige-Bildschirm mit QR-Code"></a>
+</p>
+<p align="center"><sub>Admin-Player · Gäste-Wunschseite · Anzeige-Bildschirm für Beamer/TV (Klick fürs volle Bild)</sub></p>
+
 ## ✨ Features
 
 **🎧 Wiedergabe & Bibliothek**
