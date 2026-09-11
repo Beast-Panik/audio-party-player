@@ -4,6 +4,7 @@ require __DIR__ . '/../bootstrap.php';
 
 use App\Auth;
 use App\Csrf;
+use App\PlayerSession;
 use App\Repositories\PlaylistRepository;
 use App\Repositories\SettingRepository;
 use App\Repositories\TrackRepository;
@@ -16,6 +17,28 @@ function json_fail(int $code, string $message): void
     http_response_code($code);
     echo json_encode(['error' => $message]);
     exit;
+}
+
+/**
+ * Fuer Aktionen, die behaupten, "das hier ist gerade tatsaechlich hoerbar am
+ * Laufen" (advance/restore_previous/set_now_playing) - nur die Master-Session
+ * spielt wirklich lokales Audio (siehe PlayerSession), eine Slave-Session
+ * hat gar kein laufendes <audio>-Element und darf diesen Zustand daher nicht
+ * behaupten/veraendern (sonst liesse sich z.B. der oeffentliche Ticker auf
+ * request.php/display.php per set_now_playing faelschen, ohne dass dort
+ * ueberhaupt etwas spielt). Reine Playlist-Inhaltsaenderungen (add/remove/
+ * reorder) sind davon bewusst ausgenommen - die duerfen weiterhin von jeder
+ * eingeloggten Session kommen (z.B. der Player-Rolle beim Stoebern in der
+ * Bibliothek), da sie nur die geteilte Warteschlange betreffen, nicht die
+ * tatsaechliche Wiedergabe.
+ */
+function requireMasterApi(): void
+{
+    if (!PlayerSession::isMaster()) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Nur die aktive Player-Sitzung kann das.']);
+        exit;
+    }
 }
 
 $playlist = new PlaylistRepository();
@@ -93,6 +116,7 @@ if ($method === 'POST') {
         // Ein Track ist zu Ende gespielt (oder per Crossfade abgeloest) -
         // als gespielt markieren, aus der Playlist nehmen und bei Bedarf
         // (Auto-DJ) wieder auffuellen.
+        requireMasterApi();
         $trackId = (int) ($input['track_id'] ?? 0);
         $playlist->markPlayed($trackId);
         if ($settings->get('auto_dj_enabled', '0') === '1') {
@@ -107,6 +131,7 @@ if ($method === 'POST') {
         // Track zurueck (beginCrossfade(prev, true) in app.js) - der wurde
         // beim Vorwaertsspielen per markPlayed() aus der Playlist entfernt und
         // muss jetzt wieder vorn erscheinen, siehe restoreAtFront().
+        requireMasterApi();
         $trackId = (int) ($input['track_id'] ?? 0);
         if (!(new TrackRepository())->findById($trackId)) {
             json_fail(404, 'Song nicht gefunden.');
@@ -126,6 +151,7 @@ if ($method === 'POST') {
         // Wird vom Player bei jedem Trackwechsel gemeldet, damit die
         // Gaeste-Wunschseite den aktuell laufenden Track im Ticker anzeigen
         // kann (siehe api/now_playing.php).
+        requireMasterApi();
         $npTrackId = (int) ($input['track_id'] ?? 0);
         $settings->set('now_playing_title', (string) ($input['title'] ?? ''));
         $settings->set('now_playing_artist', (string) ($input['artist'] ?? ''));

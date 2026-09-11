@@ -754,6 +754,25 @@
       postJson(api('api/playlist.php'), { action: 'reorder', ids: ids, csrf_token: CSRF }).then(refreshPlaylist);
     }
 
+    /** Verschiebt einen per "Jetzt"-Klick gestarteten Track an die erste
+     * Position - alle anderen Eintraege ruecken (in ihrer bisherigen
+     * relativen Reihenfolge) eine Stufe nach unten. Ohne das wuerde ein aus
+     * der Mitte gestarteter Track dort stehen bleiben: "Als naechstes"/Skip
+     * (nextItemAfterCurrent(), rein positionsbasiert ueber Index+1) haette
+     * dann weiterhin den Eintrag direkt darunter aus der ALTEN Reihenfolge
+     * gemeint, obwohl weiter oben noch unverspielte Tracks stehen, die
+     * eigentlich zuerst drankommen sollten (Nutzer-Report). Mutiert
+     * playlistItems synchron (nicht erst nach dem Server-Roundtrip), damit
+     * ein sofort danach ausgeloester Skip bereits die neue Reihenfolge sieht. */
+    function moveEntryToFront(entryId) {
+      var idx = playlistItems.findIndex(function (it) { return String(it.id) === String(entryId); });
+      if (idx <= 0) return;
+      playlistItems.unshift(playlistItems.splice(idx, 1)[0]);
+      var ids = playlistItems.map(function (it) { return String(it.id); });
+      lastLocalPlaylistMutationAt = Date.now();
+      postJson(api('api/playlist.php'), { action: 'reorder', ids: ids, csrf_token: CSRF });
+    }
+
     function wireDragAndDrop(playlistList) {
       playlistList.querySelectorAll('.app-playlist-item').forEach(function (row) {
         row.addEventListener('dragstart', function () {
@@ -835,6 +854,10 @@
         var it = items.find(function (x) { return String(x.id) === btn.getAttribute('data-id'); });
         btn.addEventListener('click', function () {
           if (!it || crossfading) return;
+          // Ein aus der Mitte gestarteter Track soll danach an erster
+          // Stelle stehen (die anderen ruecken darunter) - siehe
+          // moveEntryToFront().
+          moveEntryToFront(it.id);
           // Nie hart schneiden: laeuft schon etwas, weich zum angeklickten
           // Track ueberblenden (wie Vor/Zurueck) statt ihn hart zu starten.
           if (currentTrackId === null) {
@@ -2305,6 +2328,28 @@
   }
 
   /* ================================================================== *
+   * Erzwungene Master-Uebernahme (siehe api/player_session.php) - nur fuer
+   * Admins sichtbar, die gerade Slave sind (Sidebar-Footer). Holt sich die
+   * Wiedergabe-Kontrolle zurueck, falls eine andere Session (z.B. eine
+   * offen gelassene Player-Rolle) sie dauerhaft haelt und Admin-Seiten
+   * sonst unerreichbar blieben. Lebt im Kopfbereich, wird von der
+   * Soft-Navigation nie angefasst.
+   * ================================================================== */
+  var takeMasterBtn = document.getElementById('btn-take-master');
+  if (takeMasterBtn) {
+    takeMasterBtn.addEventListener('click', function () {
+      takeMasterBtn.disabled = true;
+      postJson(api('api/player_session.php'), { action: 'take_master', csrf_token: CSRF }).then(function (res) {
+        if (res.ok && res.body && res.body.ok) {
+          window.location.reload();
+        } else {
+          takeMasterBtn.disabled = false;
+        }
+      });
+    });
+  }
+
+  /* ================================================================== *
    * Player-Sperre (PIN) - rein clientseitiges Blur-Overlay. Die Sperre
    * ruehrt die <audio>-Elemente nicht an, die Musik spielt also ungestoert
    * weiter waehrend die Bedienung gesperrt ist. Der Sidebar-Button ist nur
@@ -2468,26 +2513,23 @@
     var lockCredToggle = document.getElementById('lock-cred-toggle');
     var lockCredForm = document.getElementById('lock-cred-form');
     var lockCredError = document.getElementById('lock-cred-error');
-    var lockUsername = document.getElementById('lock-username');
     var lockPassword = document.getElementById('lock-password');
     var lockCredSubmit = document.getElementById('lock-cred-submit');
 
     if (lockCredToggle && lockCredForm) {
       lockCredToggle.addEventListener('click', function () {
         lockCredForm.hidden = !lockCredForm.hidden;
-        if (!lockCredForm.hidden) lockUsername.focus();
+        if (!lockCredForm.hidden) lockPassword.focus();
       });
 
       function submitCredentials() {
         lockCredError.style.display = 'none';
         postJson(api('api/lock.php'), {
           action: 'unlock_with_credentials',
-          username: lockUsername.value,
           password: lockPassword.value,
           csrf_token: CSRF,
         }).then(function (res) {
           if (res.ok && res.body.ok) {
-            lockUsername.value = '';
             lockPassword.value = '';
             lockCredForm.hidden = true;
             disengageLock();

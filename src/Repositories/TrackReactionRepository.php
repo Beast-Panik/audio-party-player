@@ -54,9 +54,17 @@ final class TrackReactionRepository
             return false;
         }
 
-        $pdo->prepare('INSERT INTO track_reactions (track_id, guest_token, ip_hash, play_seq, created_at) VALUES (?, ?, ?, ?, ?)')
-            ->execute([$trackId, $guestToken, $ipHash, $playSeq, Util::now()]);
-        return true;
+        try {
+            $pdo->prepare('INSERT INTO track_reactions (track_id, guest_token, ip_hash, play_seq, created_at) VALUES (?, ?, ?, ?, ?)')
+                ->execute([$trackId, $guestToken, $ipHash, $playSeq, Util::now()]);
+            return true;
+        } catch (\PDOException $e) {
+            // Race: eine parallele Anfrage desselben Gasts (z.B. Doppelklick)
+            // hat die Reaktion zwischen der Pruefung oben und diesem INSERT
+            // bereits angelegt (idx_track_reactions_dedup ist UNIQUE) - dann
+            // eben wie eine bereits vorhandene Reaktion behandeln statt einer 500.
+            return false;
+        }
     }
 
     /** Anzahl Reaktionen der aktuellen Spielinstanz fuer die "laeuft gerade"-Anzeige. */

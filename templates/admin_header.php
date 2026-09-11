@@ -231,6 +231,11 @@ if (!function_exists('nav_item')) {
         spielt die Musik ab. Hier koennen nur Titel uebersprungen und zur
         Playlist hinzugefuegt werden.
       </p>
+      <?php if (!$isLimitedRole): ?>
+      <button class="pnk-btn pnk-btn--ghost pnk-btn--sm" id="btn-take-master" type="button" style="width:calc(100% - 20px); margin:4px 10px 8px;" title="Erzwingt die Wiedergabe-Kontrolle auf diesem Geraet, auch wenn ein anderes Geraet aktuell als Master angemeldet ist">
+        Steuerung übernehmen
+      </button>
+      <?php endif; ?>
     </div>
     <?php endif; ?>
   </aside>

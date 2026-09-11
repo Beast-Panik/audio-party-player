@@ -21,7 +21,7 @@ final class Database
      * hoehere Code-Version, schickt einen angemeldeten Admin automatisch zu
      * install.php und die Migration laeuft dort erst nach einem Klick.
      */
-    public const SCHEMA_VERSION = 9;
+    public const SCHEMA_VERSION = 10;
 
     public static function get(): \PDO
     {
@@ -158,6 +158,24 @@ final class Database
                 : 'CREATE INDEX IF NOT EXISTS idx_tracks_last_played ON tracks (last_played_at)',
         ]);
 
+        // Bestehende Duplikate (aus der Zeit vor dem Unique-Index unten, siehe
+        // TOCTOU-Kommentar dort) VOR dessen Anlage entfernen - sonst wuerde
+        // CREATE UNIQUE INDEX auf einer Installation mit bereits vorhandenen
+        // Doppel-Reaktionen mit einem Duplicate-Key-Fehler abbrechen und den
+        // ganzen Update-Lauf verhindern. Behaelt jeweils die aelteste Zeile.
+        self::dedupeTrackReactions($pdo);
+
+        self::runStatements($pdo, [
+            // Verhindert doppelte Herz-Reaktionen desselben Gasts fuer
+            // dieselbe Spielinstanz auf DB-Ebene (siehe TrackReactionRepository::
+            // add()) - zwei parallele Klicks koennten sonst beide die
+            // "noch nicht reagiert"-Pruefung bestehen, bevor der erste INSERT
+            // committet ist (TOCTOU), und den Zaehler kuenstlich aufblaehen.
+            $driver === 'mysql'
+                ? 'CREATE UNIQUE INDEX idx_track_reactions_dedup ON track_reactions (track_id, guest_token, play_seq)'
+                : 'CREATE UNIQUE INDEX IF NOT EXISTS idx_track_reactions_dedup ON track_reactions (track_id, guest_token, play_seq)',
+        ]);
+
         self::backfillPlaylistPositions($pdo);
     }
 
@@ -180,6 +198,30 @@ final class Database
         foreach ($rows as $i => $row) {
             $stmt->execute([$i, $row['id']]);
         }
+    }
+
+    /**
+     * Einmalige Bereinigung bestehender Doppel-Reaktionen (aus der Zeit vor
+     * dem Unique-Index idx_track_reactions_dedup, siehe ensureSchemaOn()) -
+     * behaelt je (track_id, guest_token, play_seq) nur die Zeile mit der
+     * kleinsten id, loescht den Rest. Ohne diesen Schritt wuerde die
+     * anschliessende CREATE UNIQUE INDEX-Anweisung auf Installationen mit
+     * bereits vorhandenen Duplikaten fehlschlagen.
+     */
+    private static function dedupeTrackReactions(\PDO $pdo): void
+    {
+        // Die MIN(id)-Auswahl muss in eine abgeleitete Tabelle gewrappt
+        // werden (statt direkt als Subquery auf track_reactions) - MySQL
+        // verbietet sonst "You can't specify target table 'track_reactions'
+        // for update in FROM clause" (Error 1093). SQLite akzeptiert beide
+        // Formen, daher hier einheitlich die portable Variante.
+        $pdo->exec(
+            'DELETE FROM track_reactions WHERE id NOT IN (' .
+            'SELECT keep_id FROM (' .
+            'SELECT MIN(id) AS keep_id FROM track_reactions GROUP BY track_id, guest_token, play_seq' .
+            ') AS keep_rows' .
+            ')'
+        );
     }
 
     private static function runStatements(\PDO $pdo, array $sqlStatements): void

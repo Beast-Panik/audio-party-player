@@ -35,7 +35,7 @@ final class Scanner
 
         $files = self::collectFiles($root, (bool) $lib['recursive']);
         $state = ['root' => $root, 'files' => $files, 'total' => count($files), 'processed' => 0];
-        file_put_contents(self::stateFile($libraryId), json_encode($state));
+        file_put_contents(self::stateFile($libraryId), json_encode($state), LOCK_EX);
 
         return ['total' => count($files)];
     }
@@ -48,39 +48,66 @@ final class Scanner
             return ['done' => true, 'processed' => 0, 'total' => 0, 'error' => 'Kein laufender Scan.'];
         }
 
-        $state = json_decode(file_get_contents($stateFile), true);
-        $files = $state['files'];
-        $total = $state['total'];
-        $processed = $state['processed'];
-        $root = $state['root'];
-
-        $trackRepo = new TrackRepository();
-        $end = min($processed + $chunkSize, $total);
-        $errors = [];
-        $duplicates = ($state['duplicates'] ?? 0);
-        for ($i = $processed; $i < $end; $i++) {
-            $relpath = $files[$i];
-            try {
-                if (self::scanOneFile($libraryId, $root . '/' . $relpath, $relpath, $trackRepo)) {
-                    $duplicates++;
-                }
-            } catch (\Throwable $e) {
-                $errors[] = $relpath . ': ' . $e->getMessage();
+        // Exklusive Sperre ueber den gesamten Lese-Verarbeiten-Schreiben-
+        // Zyklus (nicht nur um den Schreibzugriff) - verhindert, dass zwei
+        // ueberlappende Aufrufe (z.B. Doppelklick auf "naechster Haeppchen"
+        // im Admin-Bereich) denselben "processed"-Stand lesen und derselbe
+        // Dateibereich doppelt verarbeitet bzw. der zuerst fertige Schreiber
+        // vom zweiten ueberschrieben wird.
+        $handle = fopen($stateFile, 'r+');
+        if ($handle === false) {
+            return ['done' => true, 'processed' => 0, 'total' => 0, 'error' => 'Kein laufender Scan.'];
+        }
+        try {
+            flock($handle, LOCK_EX);
+            $raw = stream_get_contents($handle);
+            $state = json_decode((string) $raw, true);
+            if (!is_array($state)) {
+                return ['done' => true, 'processed' => 0, 'total' => 0, 'error' => 'Kein laufender Scan.'];
             }
+
+            $files = $state['files'];
+            $total = $state['total'];
+            $processed = $state['processed'];
+            $root = $state['root'];
+
+            $trackRepo = new TrackRepository();
+            $end = min($processed + $chunkSize, $total);
+            $errors = [];
+            $duplicates = ($state['duplicates'] ?? 0);
+            for ($i = $processed; $i < $end; $i++) {
+                $relpath = $files[$i];
+                try {
+                    if (self::scanOneFile($libraryId, $root . '/' . $relpath, $relpath, $trackRepo)) {
+                        $duplicates++;
+                    }
+                } catch (\Throwable $e) {
+                    $errors[] = $relpath . ': ' . $e->getMessage();
+                }
+            }
+
+            $state['processed'] = $end;
+            $state['duplicates'] = $duplicates;
+            $done = $end >= $total;
+
+            if ($done) {
+                $existing = $trackRepo->relpathsForLibrary($libraryId);
+                $toDelete = array_values(array_diff($existing, $files));
+                $trackRepo->deleteByRelpaths($libraryId, $toDelete);
+                (new LibraryRepository())->markScanned($libraryId, $trackRepo->countForLibrary($libraryId));
+            } else {
+                rewind($handle);
+                ftruncate($handle, 0);
+                fwrite($handle, json_encode($state));
+                fflush($handle);
+            }
+        } finally {
+            flock($handle, LOCK_UN);
+            fclose($handle);
         }
 
-        $state['processed'] = $end;
-        $state['duplicates'] = $duplicates;
-        $done = $end >= $total;
-
         if ($done) {
-            $existing = $trackRepo->relpathsForLibrary($libraryId);
-            $toDelete = array_values(array_diff($existing, $files));
-            $trackRepo->deleteByRelpaths($libraryId, $toDelete);
-            (new LibraryRepository())->markScanned($libraryId, $trackRepo->countForLibrary($libraryId));
             @unlink($stateFile);
-        } else {
-            file_put_contents($stateFile, json_encode($state));
         }
 
         return ['done' => $done, 'processed' => $end, 'total' => $total, 'errors' => $errors, 'duplicates' => $duplicates];

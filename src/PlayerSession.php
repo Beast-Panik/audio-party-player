@@ -80,6 +80,30 @@ final class PlayerSession
     }
 
     /**
+     * Erzwingt die Master-Rolle fuer die aktuelle Session, unabhaengig davon,
+     * wer sie gerade haelt. Einzige Moeglichkeit, aus einer dauerhaften
+     * Slave-Sperre herauszukommen, wenn eine andere Session die Rolle haelt
+     * und sie nicht von selbst abgibt (z.B. eine eingeschraenkte
+     * Player-Rolle mit offen gelassenem Tab, deren SSE-Verbindung den
+     * Heartbeat unbegrenzt frisch haelt) - ohne das waere ein Admin von
+     * ALLEN admin/*-Seiten (inkl. admin/users.php, wo genau dieser Account
+     * entfernt werden koennte) dauerhaft ausgesperrt. Nur ueber den
+     * Admin-only-Endpunkt api/player_session.php erreichbar (siehe dort),
+     * damit die eingeschraenkte Rolle selbst niemandem die Kontrolle
+     * entreissen kann.
+     */
+    public static function forceTakeover(): void
+    {
+        $sid = session_id();
+        if ($sid === '') {
+            return;
+        }
+        $settings = new SettingRepository();
+        $settings->set('player_master_session_id', $sid);
+        $settings->set('player_master_heartbeat_at', (string) time());
+    }
+
+    /**
      * Beim expliziten Logout: Master-Rolle sofort freigeben, damit eine
      * bereits aktive Slave-Session nicht erst auf den Heartbeat-Timeout
      * warten muss, um die Kontrolle zu uebernehmen.

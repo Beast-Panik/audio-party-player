@@ -26,11 +26,9 @@
     </div>
     <div class="pnk-alert pnk-alert--danger" id="lock-error" style="margin-top:14px; display:none;"></div>
 
-    <button type="button" class="pnk-btn pnk-btn--ghost pnk-btn--sm" id="lock-cred-toggle" style="margin-top:16px;">Stattdessen mit Account anmelden</button>
+    <button type="button" class="pnk-btn pnk-btn--ghost pnk-btn--sm" id="lock-cred-toggle" style="margin-top:16px;">Stattdessen mit Passwort entsperren</button>
     <div id="lock-cred-form" style="margin-top:12px; text-align:left;" hidden>
-      <label class="pnk-label" for="lock-username">Benutzername</label>
-      <input class="pnk-input" type="text" id="lock-username" autocomplete="username" style="margin-bottom:8px; width:100%;">
-      <label class="pnk-label" for="lock-password">Passwort</label>
+      <label class="pnk-label" for="lock-password">Dein Account-Passwort</label>
       <input class="pnk-input" type="password" id="lock-password" autocomplete="current-password" style="margin-bottom:10px; width:100%;">
       <button type="button" class="pnk-btn pnk-btn--primary" id="lock-cred-submit" style="width:100%;">Entsperren</button>
       <div class="pnk-alert pnk-alert--danger" id="lock-cred-error" style="margin-top:10px; display:none;"></div>

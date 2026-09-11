@@ -43,10 +43,22 @@ final class GuestProfileRepository
         if ($existing) {
             $pdo->prepare('UPDATE guest_profiles SET name = ?, created_at = ? WHERE guest_token = ?')
                 ->execute([$name, $now, $guestToken]);
-        } else {
+            return $name;
+        }
+
+        try {
             $pdo->prepare('INSERT INTO guest_profiles (guest_token, name, created_at) VALUES (?, ?, ?)')
                 ->execute([$guestToken, $name, $now]);
+            return $name;
+        } catch (\PDOException $e) {
+            // Race: eine parallele Anfrage desselben Gasts (z.B. zwei schnell
+            // hintereinander abgeschickte Tabs) hat den Namen zwischen dem
+            // find() oben und diesem INSERT bereits angelegt (guest_token ist
+            // UNIQUE). Kein Fehler - genau wie beabsichtigt gilt dann der
+            // zuerst gespeicherte Name, also den jetzt frisch nachladen statt
+            // eine 500 zu werfen.
+            $winner = $this->find($guestToken);
+            return $winner['name'] ?? $name;
         }
-        return $name;
     }
 }

@@ -69,7 +69,15 @@ final class SettingRepository
         if ($stmt->fetch()) {
             $pdo->prepare('UPDATE settings SET setting_value = ? WHERE setting_key = ?')->execute([$value, $key]);
         } else {
-            $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)')->execute([$key, $value]);
+            try {
+                $pdo->prepare('INSERT INTO settings (setting_key, setting_value) VALUES (?, ?)')->execute([$key, $value]);
+            } catch (\PDOException $e) {
+                // Race: eine parallele Anfrage hat denselben, bis eben noch
+                // nicht existierenden Key zwischen SELECT und INSERT bereits
+                // angelegt (setting_key ist UNIQUE) - dann eben nachtraeglich
+                // per UPDATE auf den gewuenschten Wert setzen statt einer 500.
+                $pdo->prepare('UPDATE settings SET setting_value = ? WHERE setting_key = ?')->execute([$value, $key]);
+            }
         }
         if (self::$cache !== null) {
             self::$cache[$key] = $value;

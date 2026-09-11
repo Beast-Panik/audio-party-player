@@ -183,43 +183,66 @@ if ($method === 'POST') {
         // gemeinsam ueberschreiten, bevor die erste INSERT committet ist
         // (TOCTOU). BEGIN IMMEDIATE erzwingt bei SQLite sofort den
         // Schreib-Lock, statt ihn erst bei der ersten Schreiboperation zu
-        // holen - genau das schliesst die Luecke.
+        // holen - genau das schliesst die Luecke. Bei MySQL reicht eine
+        // gewoehnliche Transaktion dafuer NICHT: das Standard-Isolationslevel
+        // REPEATABLE READ liesse zwei parallele Transaktionen weiterhin
+        // denselben Stand lesen (dieselbe Luecke, nur DB-abhaengig nicht
+        // aufgefallen) - SERIALIZABLE erzwingt bei InnoDB Sperren auf den
+        // gelesenen Bereich und schliesst die Luecke gleichwertig zu
+        // SQLites BEGIN IMMEDIATE.
         $pdo = Database::get();
         $isMysql = Database::driver() === 'mysql';
-        $isMysql ? $pdo->beginTransaction() : $pdo->exec('BEGIN IMMEDIATE');
-
-        // Grobe, feste IP-Bremse als zusaetzliches Sicherheitsnetz (z.B. falls
-        // jemand das Cookie loescht) - das eigentliche, einstellbare Limit
-        // laeuft ueber das Gast-Cookie weiter unten.
-        if ($repo->countRecentFromIp(5) >= 20) {
-            json_fail(429, 'Zu viele Wünsche in kurzer Zeit. Bitte kurz warten.');
-        }
-
-        $limitInfo = guestLimitInfo($guestToken, $repo, $settings);
-        if ($limitInfo['remaining'] === 0) {
-            $timeLabel = $limitInfo['limit_minutes'] % 60 === 0 && $limitInfo['limit_minutes'] >= 60
-                ? ($limitInfo['limit_minutes'] / 60) . ' Std.'
-                : $limitInfo['limit_minutes'] . ' Min.';
-            json_fail(
-                429,
-                "Du hast das Limit von {$limitInfo['limit_count']} Wünschen pro {$timeLabel} erreicht. Nächster Wunsch möglich in " . Util::formatWait($limitInfo['wait_seconds']) . '.',
-                ['wait_seconds' => $limitInfo['wait_seconds']]
-            );
-        }
-
-        // Auto-DJ: Wuensche werden direkt (ohne manuelle Freigabe) in die
-        // Playlist geschoben, statt in der Wunschliste auf Freigabe zu warten.
-        $autoDj = $settings->get('auto_dj_enabled', '0') === '1';
-        if ($autoDj) {
-            $id = $repo->create($trackId, $guestName, $guestToken, RequestRepository::STATUS_APPROVED);
-            $playlist = new PlaylistRepository();
-            $playlist->add($trackId, PlaylistRepository::SOURCE_GUEST, $id);
-            $playlist->topUp();
+        if ($isMysql) {
+            $pdo->exec('SET TRANSACTION ISOLATION LEVEL SERIALIZABLE');
+            $pdo->beginTransaction();
         } else {
-            $id = $repo->create($trackId, $guestName, $guestToken);
+            $pdo->exec('BEGIN IMMEDIATE');
         }
 
-        $isMysql ? $pdo->commit() : $pdo->exec('COMMIT');
+        try {
+            // Grobe, feste IP-Bremse als zusaetzliches Sicherheitsnetz (z.B. falls
+            // jemand das Cookie loescht) - das eigentliche, einstellbare Limit
+            // laeuft ueber das Gast-Cookie weiter unten.
+            if ($repo->countRecentFromIp(5) >= 20) {
+                json_fail(429, 'Zu viele Wünsche in kurzer Zeit. Bitte kurz warten.');
+            }
+
+            $limitInfo = guestLimitInfo($guestToken, $repo, $settings);
+            if ($limitInfo['remaining'] === 0) {
+                $timeLabel = $limitInfo['limit_minutes'] % 60 === 0 && $limitInfo['limit_minutes'] >= 60
+                    ? ($limitInfo['limit_minutes'] / 60) . ' Std.'
+                    : $limitInfo['limit_minutes'] . ' Min.';
+                json_fail(
+                    429,
+                    "Du hast das Limit von {$limitInfo['limit_count']} Wünschen pro {$timeLabel} erreicht. Nächster Wunsch möglich in " . Util::formatWait($limitInfo['wait_seconds']) . '.',
+                    ['wait_seconds' => $limitInfo['wait_seconds']]
+                );
+            }
+
+            // Auto-DJ: Wuensche werden direkt (ohne manuelle Freigabe) in die
+            // Playlist geschoben, statt in der Wunschliste auf Freigabe zu warten.
+            $autoDj = $settings->get('auto_dj_enabled', '0') === '1';
+            if ($autoDj) {
+                $id = $repo->create($trackId, $guestName, $guestToken, RequestRepository::STATUS_APPROVED);
+                $playlist = new PlaylistRepository();
+                $playlist->add($trackId, PlaylistRepository::SOURCE_GUEST, $id);
+                $playlist->topUp();
+            } else {
+                $id = $repo->create($trackId, $guestName, $guestToken);
+            }
+
+            $isMysql ? $pdo->commit() : $pdo->exec('COMMIT');
+        } catch (\PDOException $e) {
+            // Seltener Sonderfall bei SERIALIZABLE (MySQL): die DB erkennt
+            // selbst einen Konflikt mit einer parallelen Transaktion und
+            // bricht eine der beiden mit einem Deadlock-/Serialisierungsfehler
+            // ab - kein Bug, sondern genau der Mechanismus, der die Luecke
+            // oben schliesst. Sauber zuruecksetzen statt eines rohen 500ers.
+            if ($pdo->inTransaction()) {
+                $pdo->rollBack();
+            }
+            json_fail(409, 'Kurzzeitig überlastet, bitte gleich noch einmal versuchen.');
+        }
 
         $limitInfo = guestLimitInfo($guestToken, $repo, $settings);
         echo json_encode(array_merge(['ok' => true, 'id' => $id, 'auto_dj' => $autoDj], $limitInfo));

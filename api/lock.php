@@ -4,6 +4,7 @@ require __DIR__ . '/../bootstrap.php';
 
 use App\Auth;
 use App\Csrf;
+use App\LoginThrottle;
 use App\Repositories\SettingRepository;
 use App\Repositories\UserRepository;
 
@@ -105,28 +106,35 @@ if ($method === 'POST') {
     }
 
     if (($input['action'] ?? '') === 'unlock_with_credentials') {
-        // Notfall-Entsperrung mit Benutzername/Passwort - eigener,
-        // unabhaengiger Zaehler, damit ein mutwillig herbeigefuehrter
-        // PIN-Sperrzustand (z.B. ein Gast, der absichtlich die PIN
-        // falsch eintippt) den echten Admin nicht dauerhaft aussperren
-        // kann. Ein erfolgreicher Login hier hebt auch die PIN-Sperre auf.
+        // Notfall-Entsperrung mit dem eigenen Passwort - NICHT mit einem frei
+        // waehlbaren Benutzernamen: diese Aktion soll ausschliesslich die
+        // Identitaet der SCHON angemeldeten Session erneut bestaetigen
+        // (aehnlich currentPasswordConfirmed() in admin/users.php), nicht
+        // als zweites, schwaecher gedrosseltes Login-Formular fuer BELIEBIGE
+        // Konten dienen. Ein eingeschraenkter Player-Account koennte sonst
+        // ueber genau diesen Weg das Passwort eines Admin-Kontos erraten -
+        // der session-gebundene Zaehler unten laesst sich per Logout+Login
+        // trivial zuruecksetzen, daher zusaetzlich die IP-basierte, davon
+        // unabhaengige Bremse aus LoginThrottle (wie login.php).
         $credBlockedUntil = (int) ($_SESSION['lock_cred_blocked_until'] ?? 0);
-        if (time() < $credBlockedUntil) {
+        $ipWaitSeconds = LoginThrottle::secondsUntilAllowed('lock_cred');
+        if (time() < $credBlockedUntil || $ipWaitSeconds > 0) {
             json_fail(429, 'Zu viele Fehlversuche. Bitte kurz warten und erneut versuchen.');
         }
 
-        $username = trim((string) ($input['username'] ?? ''));
         $password = (string) ($input['password'] ?? '');
-        $user = $username !== '' ? (new UserRepository())->findByUsername($username) : null;
+        $me = (new UserRepository())->findById((int) Auth::userId());
 
-        if ($user && $password !== '' && password_verify($password, $user['password_hash'])) {
+        if ($me && $password !== '' && password_verify($password, $me['password_hash'])) {
             $_SESSION['lock_attempts'] = 0;
             $_SESSION['lock_blocked_until'] = 0;
             $_SESSION['lock_cred_attempts'] = 0;
+            LoginThrottle::recordSuccess('lock_cred');
             echo json_encode(['ok' => true]);
             exit;
         }
 
+        LoginThrottle::recordFailure('lock_cred');
         $credAttempts = (int) ($_SESSION['lock_cred_attempts'] ?? 0) + 1;
         $_SESSION['lock_cred_attempts'] = $credAttempts;
         if ($credAttempts >= 5) {
@@ -135,7 +143,7 @@ if ($method === 'POST') {
             json_fail(429, 'Zu viele Fehlversuche. Bitte 30 Sekunden warten.');
         }
 
-        json_fail(401, 'Benutzername oder Passwort falsch.');
+        json_fail(401, 'Passwort falsch.');
     }
 
     json_fail(400, 'Unbekannte Aktion.');
