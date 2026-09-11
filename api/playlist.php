@@ -6,6 +6,7 @@ use App\Auth;
 use App\Csrf;
 use App\PlayerSession;
 use App\Repositories\PlaylistRepository;
+use App\Repositories\RequestRepository;
 use App\Repositories\SettingRepository;
 use App\Repositories\TrackRepository;
 
@@ -39,6 +40,38 @@ function requireMasterApi(): void
         echo json_encode(['error' => 'Nur die aktive Player-Sitzung kann das.']);
         exit;
     }
+}
+
+/**
+ * Beim Einschalten des Auto-DJ alle aktuell wartenden Gastwuensche direkt
+ * in die Playlist uebernehmen - fuer NEU eingehende Wuensche macht Auto-DJ
+ * das ohnehin automatisch (siehe api/requests.php Action "create"), sonst
+ * blieben bereits vor dem Einschalten eingegangene Wuensche unangetastet
+ * in der Wunschliste liegen, obwohl das Einschalten erkennbar signalisiert
+ * "jetzt bitte alles automatisch abspielen". Aeltester Wunsch zuerst
+ * (faire Reihenfolge), kuerzlich gespielte oder inzwischen aus der
+ * Bibliothek entfernte Tracks werden uebersprungen (bleiben als offener
+ * Wunsch stehen) statt sie stillschweigend zu verwerfen oder die Sperre
+ * zu umgehen.
+ */
+function acceptAllPendingRequests(PlaylistRepository $playlist, SettingRepository $settings): int
+{
+    $requestRepo = new RequestRepository();
+    $trackRepo = new TrackRepository();
+    $lockHours = (int) $settings->get('recent_played_lock_hours', '4');
+    $pending = array_reverse($requestRepo->listWithTracks(RequestRepository::STATUS_PENDING, 500));
+
+    $accepted = 0;
+    foreach ($pending as $request) {
+        $track = $trackRepo->findById((int) $request['track_id']);
+        if (!$track || $trackRepo->isLocked($track, $lockHours)) {
+            continue;
+        }
+        $playlist->add((int) $request['track_id'], PlaylistRepository::SOURCE_GUEST, (int) $request['id']);
+        $requestRepo->updateStatus((int) $request['id'], RequestRepository::STATUS_APPROVED);
+        $accepted++;
+    }
+    return $accepted;
 }
 
 $playlist = new PlaylistRepository();
@@ -196,11 +229,18 @@ if ($method === 'POST') {
 
     if ($action === 'set_auto_dj') {
         $enabled = !empty($input['enabled']);
+        $wasEnabled = $settings->get('auto_dj_enabled', '0') === '1';
         $settings->set('auto_dj_enabled', $enabled ? '1' : '0');
+
+        $accepted = 0;
+        if ($enabled && !$wasEnabled) {
+            $accepted = acceptAllPendingRequests($playlist, $settings);
+        }
+
         // Kein topUp() hier - der direkt danach vom Frontend ausgeloeste GET
         // auf diesen Endpunkt fuellt bei Bedarf ohnehin auf (sonst wuerde
         // doppelt aufgefuellt: einmal hier, einmal beim folgenden GET).
-        echo json_encode(['ok' => true, 'auto_dj' => $enabled]);
+        echo json_encode(['ok' => true, 'auto_dj' => $enabled, 'accepted' => $accepted]);
         exit;
     }
 

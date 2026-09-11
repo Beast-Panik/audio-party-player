@@ -1006,6 +1006,12 @@
               badge.classList.toggle('pnk-badge--accent', autoDjEnabled);
             }
             refreshPlaylist();
+            // Beim Einschalten uebernimmt der Server alle bis dahin
+            // wartenden Gastwuensche direkt in die Playlist (siehe
+            // acceptAllPendingRequests() in api/playlist.php) - die
+            // Wunschliste hier muss das ebenfalls sofort zeigen, statt
+            // erst nach der naechsten manuellen Annehmen/Verwerfen-Aktion.
+            refreshQueue();
           });
       });
     }
