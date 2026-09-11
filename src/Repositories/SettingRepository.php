@@ -33,6 +33,34 @@ final class SettingRepository
         return array_key_exists($key, $cache) ? $cache[$key] : $default;
     }
 
+    /**
+     * Wie get(), aber ignoriert/aktualisiert den Prozess-Cache - fuer Settings,
+     * bei denen die normalerweise tolerierte leichte Verzoegerung (siehe
+     * Klassen-Docblock) zu echten Fehlern fuehren kann. Konkreter Fall:
+     * PlayerSession::touch() liest+schreibt player_master_session_id in
+     * jedem Zyklus des bis zu 8s laufenden Admin-SSE-Streams (api/events.php)
+     * - ohne Frischlesen sah der laengst laufende Stream einen parallelen
+     * Logout (der die Master-Rolle freigibt) nicht und hat sie beim naechsten
+     * Zyklus aus dem veralteten Cache heraus fuer die schon abgemeldete
+     * Sitzung "wiederbelebt" (Nutzer-Report).
+     */
+    public function getFresh(string $key, ?string $default = null): ?string
+    {
+        $stmt = Database::get()->prepare('SELECT setting_value FROM settings WHERE setting_key = ?');
+        $stmt->execute([$key]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            if (self::$cache !== null) {
+                unset(self::$cache[$key]);
+            }
+            return $default;
+        }
+        if (self::$cache !== null) {
+            self::$cache[$key] = $row['setting_value'];
+        }
+        return $row['setting_value'];
+    }
+
     public function set(string $key, ?string $value): void
     {
         $pdo = Database::get();

@@ -54,8 +54,21 @@ while (ob_get_level() > 0) {
     ob_end_flush();
 }
 
-/** Playlist/Auto-DJ/Crossfade + Wunschliste + Reaktionszaehler fuer den Admin-Player. */
-function events_payload_admin(): array
+/**
+ * Playlist/Auto-DJ/Crossfade + Wunschliste + Reaktionszaehler fuer den
+ * Admin-Player. $refreshMaster nur beim ersten Zyklus true (siehe Aufruf
+ * unten) - sonst wuerde eine schon laengere Zeit offene Verbindung ueber
+ * PlayerSession::touch() bei jedem der bis zu 4 Zyklen erneut die
+ * Master-Rolle beanspruchen, auch noch Sekunden nachdem sich genau diese
+ * Sitzung schon abgemeldet hat (releaseIfMaster() lief dann laengst, aber
+ * der Stream bemerkt den Logout einer PARALLELEN Anfrage nicht - PHP kann
+ * die Session hier nicht mehr neu einlesen, da fuer den SSE-Stream schon
+ * Header/Ausgabe gesendet wurden). Ein einmaliger Refresh pro Verbindung
+ * reicht: der naechste automatische Reconnect (alle ~6-8s, siehe unten)
+ * prueft ueber Auth::requireLoginApi() ganz am Anfang zuverlaessig neu, ob
+ * ueberhaupt noch eine gueltige Sitzung vorliegt (Nutzer-Report).
+ */
+function events_payload_admin(bool $refreshMaster): array
 {
     $settings = new SettingRepository();
     $trackId = (int) $settings->get('now_playing_track_id', '0');
@@ -82,7 +95,7 @@ function events_payload_admin(): array
         // Master, der sie als einziger tatsaechlich lokal ausfuehrt (dort laeuft
         // die eigentliche Audiowiedergabe) - siehe api/playlist.php Action
         // remote_command und initTrackPlayer() in app.js.
-        'is_master' => PlayerSession::touch(),
+        'is_master' => $refreshMaster ? PlayerSession::touch() : PlayerSession::isMaster(),
         'remote_cmd_seq' => (int) $settings->get('player_remote_cmd_seq', '0'),
         'remote_cmd' => $settings->get('player_remote_cmd', '') ?: null,
         'reaction_count' => $trackId ? (new TrackReactionRepository())->countForTrack($trackId) : 0,
@@ -165,7 +178,7 @@ for ($i = 0; $i < 4; $i++) {
     if (connection_aborted()) {
         break;
     }
-    $payload = $scope === 'admin' ? events_payload_admin() : events_payload_guest();
+    $payload = $scope === 'admin' ? events_payload_admin($i === 0) : events_payload_guest();
     echo 'data: ' . json_encode($payload) . "\n\n";
     flush();
     if ($i < 3) {

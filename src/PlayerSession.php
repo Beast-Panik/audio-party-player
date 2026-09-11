@@ -41,8 +41,15 @@ final class PlayerSession
             return true;
         }
         $settings = new SettingRepository();
-        $masterSid = (string) $settings->get('player_master_session_id', '');
-        $heartbeatAt = (int) $settings->get('player_master_heartbeat_at', '0');
+        // Frischlesen statt SettingRepository::get(): touch() wird aus dem bis
+        // zu 8s laufenden Admin-SSE-Stream (api/events.php) heraus in jedem
+        // Zyklus erneut aufgerufen - mit dem normalen (pro Anfrage gecachten)
+        // get() wuerde ein Logout aus einer parallelen Anfrage fuer den Rest
+        // dieses Streams unsichtbar bleiben und der naechste Zyklus wuerde die
+        // eigene, laengst abgemeldete Sitzung aus dem veralteten Cache heraus
+        // wieder als Master eintragen (Nutzer-Report).
+        $masterSid = (string) $settings->getFresh('player_master_session_id', '');
+        $heartbeatAt = (int) $settings->getFresh('player_master_heartbeat_at', '0');
         $stale = (time() - $heartbeatAt) > self::HEARTBEAT_TIMEOUT_SECONDS;
 
         if ($masterSid === $sid || $masterSid === '' || $stale) {
