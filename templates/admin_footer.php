@@ -5,8 +5,8 @@
 <div class="app-lock-overlay" id="lock-overlay" hidden>
   <div class="app-lock-box">
     <div class="app-lock-icon">🔒</div>
-    <h2>Player gesperrt</h2>
-    <p class="pnk-text-muted">Die Musik läuft weiter. PIN eingeben zum Entsperren.</p>
+    <h2 id="lock-heading">Player gesperrt</h2>
+    <p class="pnk-text-muted" id="lock-subtext">Die Musik läuft weiter. PIN eingeben zum Entsperren.</p>
     <div class="app-lock-dots" id="lock-dots">
       <span></span><span></span><span></span><span></span>
     </div>

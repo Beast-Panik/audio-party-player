@@ -2243,6 +2243,14 @@
    * dann ein <button> (sperrt sofort), wenn eine PIN hinterlegt ist -
    * andernfalls ein <a> zur PIN-Einrichtung in den Einstellungen. Lebt im
    * Kopfbereich und wird von der Soft-Navigation nie angefasst.
+   *
+   * Die eingeschraenkte Player-Rolle hat keinen Zugriff auf die globale
+   * Admin-PIN (Einstellungen) und soll sie auch nicht kennen muessen - ihr
+   * Button traegt stattdessen data-lock-mode="setup" (siehe admin_header.php),
+   * solange sie noch keine eigene, nur fuer die aktuelle Sitzung gueltige PIN
+   * festgelegt hat (api/lock.php Aktion set_pin). Nach dem Festlegen bleibt
+   * der Player wie erwartet gesperrt - die neue PIN muss direkt zum
+   * Entsperren erneut eingegeben werden.
    * ================================================================== */
   var lockOverlay = document.getElementById('lock-overlay');
   var lockBtn = document.getElementById('btn-lock');
@@ -2251,7 +2259,14 @@
     var lockDots = lockDotsWrap.querySelectorAll('span');
     var lockError = document.getElementById('lock-error');
     var lockKeypad = document.getElementById('lock-keypad');
+    var lockHeading = document.getElementById('lock-heading');
+    var lockSubtext = document.getElementById('lock-subtext');
     var pinBuffer = '';
+    var lockMode = lockBtn.dataset.lockMode === 'setup' ? 'setup' : 'unlock';
+    var LOCK_TEXT = {
+      unlock: { heading: 'Player gesperrt', subtext: 'Die Musik läuft weiter. PIN eingeben zum Entsperren.' },
+      setup: { heading: 'Eigene PIN festlegen', subtext: 'Lege eine 4-stellige PIN fest, mit der du den Player kuenftig sperren/entsperren kannst.' },
+    };
 
     function updateLockDots() {
       lockDots.forEach(function (dot, i) {
@@ -2266,27 +2281,49 @@
       setTimeout(function () { lockDotsWrap.classList.remove('is-error'); }, 400);
     }
 
-    function setLockedFlag(locked) {
+    function setLockedFlag(mode) {
       try {
-        if (locked) sessionStorage.setItem('app_player_locked', '1');
+        if (mode) sessionStorage.setItem('app_player_locked', mode);
         else sessionStorage.removeItem('app_player_locked');
       } catch (e) {}
     }
 
-    function engageLock() {
+    function engageLock(mode) {
       pinBuffer = '';
       updateLockDots();
       lockError.style.display = 'none';
+      lockHeading.textContent = LOCK_TEXT[mode].heading;
+      lockSubtext.textContent = LOCK_TEXT[mode].subtext;
       lockOverlay.hidden = false;
-      setLockedFlag(true);
+      setLockedFlag(mode);
     }
 
     function disengageLock() {
       lockOverlay.hidden = true;
-      setLockedFlag(false);
+      setLockedFlag(null);
     }
 
     function submitPin() {
+      if (lockMode === 'setup') {
+        postJson(api('api/lock.php'), { action: 'set_pin', pin: pinBuffer, csrf_token: CSRF }).then(function (res) {
+          if (res.ok && res.body.ok) {
+            // Eigene PIN ist jetzt festgelegt - Player bleibt wie beim
+            // normalen Sperren-Klick gesperrt, kuenftige Klicks auf den
+            // Button sperren direkt (kein Setup-Schritt mehr noetig).
+            lockMode = 'unlock';
+            lockBtn.dataset.lockMode = 'unlock';
+            lockBtn.title = 'Player sperren';
+            engageLock('unlock');
+            return;
+          }
+          var msg = (res.body && res.body.error) || 'PIN konnte nicht gespeichert werden.';
+          flashLockError(msg);
+          pinBuffer = '';
+          updateLockDots();
+        });
+        return;
+      }
+
       postJson(api('api/lock.php'), { action: 'unlock', pin: pinBuffer, csrf_token: CSRF }).then(function (res) {
         if (res.ok && res.body.ok) {
           disengageLock();
@@ -2312,7 +2349,7 @@
       if (pinBuffer.length === 4) submitPin();
     }
 
-    lockBtn.addEventListener('click', engageLock);
+    lockBtn.addEventListener('click', function () { engageLock(lockMode); });
 
     lockKeypad.addEventListener('click', function (e) {
       var btn = e.target.closest('button[data-key]');
@@ -2342,9 +2379,16 @@
       }
     });
 
-    // Nach einem versehentlichen Reload waehrend gesperrt: Overlay sofort wieder zeigen.
+    // Nach einem versehentlichen Reload waehrend gesperrt: Overlay sofort
+    // wieder zeigen - Text/Modus richten sich nach dem AKTUELLEN lockMode
+    // (frisch vom Server bei diesem Seitenaufruf), nicht nach dem in
+    // sessionStorage gemerkten String, damit z.B. eine inzwischen (in einem
+    // anderen Tab) festgelegte eigene PIN hier korrekt als "unlock" statt
+    // dem alten "setup" behandelt wird.
     try {
-      if (sessionStorage.getItem('app_player_locked') === '1') {
+      if (sessionStorage.getItem('app_player_locked')) {
+        lockHeading.textContent = LOCK_TEXT[lockMode].heading;
+        lockSubtext.textContent = LOCK_TEXT[lockMode].subtext;
         lockOverlay.hidden = false;
       }
     } catch (e) {}

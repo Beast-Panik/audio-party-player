@@ -28,6 +28,10 @@ $isSlave = Auth::isLoggedIn() && !PlayerSession::touch();
 // sehen, keine Bibliotheks-/Benutzer-/Einstellungsverwaltung und keine
 // party-weiten Steuerelemente (ON-AIR-Schalter, Player-Sperre einrichten).
 $isLimitedRole = Auth::isLoggedIn() && !Auth::isAdmin();
+// Player-Rolle: eigene, nur fuer die aktuelle Sitzung gueltige Sperr-PIN
+// (siehe api/lock.php set_pin) - unabhaengig von der globalen Admin-PIN
+// oben, damit die Player-Rolle nicht die Admin-PIN kennen muss.
+$playerPinConfigured = isset($_SESSION['player_lock_pin_hash']);
 
 if (!function_exists('app_icon_paths')) {
     /**
@@ -205,11 +209,15 @@ if (!function_exists('nav_item')) {
         <span class="app-live-toggle-dot" aria-hidden="true"></span>
         <span class="app-nav-label"><?= $appLive ? 'ON AIR' : 'OFFLINE' ?></span>
       </button>
-      <?php if ($hasLockPin): ?>
-        <button class="pnk-nav-item app-nav-btn app-lock-nav-btn" id="btn-lock" type="button" title="Player sperren">
+      <?php if ($isLimitedRole): ?>
+        <button class="pnk-nav-item app-nav-btn app-lock-nav-btn" id="btn-lock" type="button" data-lock-mode="<?= $playerPinConfigured ? 'unlock' : 'setup' ?>" title="<?= $playerPinConfigured ? 'Player sperren' : 'Eigene PIN festlegen und Player sperren' ?>">
           <span class="app-nav-icon app-nav-icon--lock"><?= nav_icon_svg('lock') ?></span><span class="app-nav-label">Player sperren</span>
         </button>
-      <?php elseif (!$isLimitedRole): ?>
+      <?php elseif ($hasLockPin): ?>
+        <button class="pnk-nav-item app-nav-btn app-lock-nav-btn" id="btn-lock" type="button" data-lock-mode="unlock" title="Player sperren">
+          <span class="app-nav-icon app-nav-icon--lock"><?= nav_icon_svg('lock') ?></span><span class="app-nav-label">Player sperren</span>
+        </button>
+      <?php else: ?>
         <a class="pnk-nav-item app-nav-btn app-lock-nav-btn" href="<?= app_url('admin/settings.php') ?>" title="PIN einrichten, um den Player sperren zu koennen">
           <span class="app-nav-icon app-nav-icon--key"><?= nav_icon_svg('key') ?></span><span class="app-nav-label">PIN einrichten</span>
         </a>

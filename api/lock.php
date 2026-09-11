@@ -14,6 +14,15 @@ use App\Repositories\UserRepository;
  * JavaScript/HTML der Seite stehen muss. Erfordert weiterhin eine gueltige
  * Admin-Session (die Sperre ersetzt kein Login, sie ist ein zusaetzlicher
  * Schutz waehrend einer laufenden Sitzung).
+ *
+ * Zwei getrennte PIN-Mechanismen: Admins nutzen die eine, global in den
+ * Einstellungen hinterlegte PIN (settings.lock_pin_hash). Die eingeschraenkte
+ * Auth::ROLE_PLAYER-Rolle hat dort keinen Zugriff und soll auch nicht die
+ * Admin-PIN kennen/nutzen muessen - sie legt sich stattdessen beim ersten
+ * Sperren eine eigene PIN an (Aktion set_pin), die nur in der PHP-Session
+ * liegt ($_SESSION['player_lock_pin_hash']) und damit automatisch mit dem
+ * Logout verschwindet - nach der naechsten Anmeldung muss sie erneut
+ * festgelegt werden (Nutzeranforderung).
  */
 
 header('Content-Type: application/json; charset=utf-8');
@@ -30,7 +39,10 @@ $settings = new SettingRepository();
 $method = $_SERVER['REQUEST_METHOD'];
 
 if ($method === 'GET' && ($_GET['action'] ?? '') === 'status') {
-    echo json_encode(['configured' => $settings->get('lock_pin_hash') !== null]);
+    $configured = Auth::isAdmin()
+        ? $settings->get('lock_pin_hash') !== null
+        : isset($_SESSION['player_lock_pin_hash']);
+    echo json_encode(['configured' => $configured]);
     exit;
 }
 
@@ -41,6 +53,25 @@ if ($method === 'POST') {
         json_fail(400, 'Ungueltiges Formular. Bitte Seite neu laden.');
     }
 
+    if (($input['action'] ?? '') === 'set_pin') {
+        // Nur fuer die eingeschraenkte Rolle - Admins haben ihre PIN bereits
+        // ueber admin/settings.php (mit Bestaetigungsfeld, siehe dort).
+        if (Auth::isAdmin()) {
+            json_fail(400, 'Admin-PINs werden in den Einstellungen verwaltet.');
+        }
+
+        $pin = (string) ($input['pin'] ?? '');
+        if (!preg_match('/^\d{4}$/', $pin)) {
+            json_fail(400, 'Die PIN muss genau 4 Ziffern haben.');
+        }
+
+        $_SESSION['player_lock_pin_hash'] = password_hash($pin, PASSWORD_DEFAULT);
+        $_SESSION['lock_attempts'] = 0;
+        $_SESSION['lock_blocked_until'] = 0;
+        echo json_encode(['ok' => true]);
+        exit;
+    }
+
     if (($input['action'] ?? '') === 'unlock') {
         $blockedUntil = (int) ($_SESSION['lock_blocked_until'] ?? 0);
         if (time() < $blockedUntil) {
@@ -48,7 +79,9 @@ if ($method === 'POST') {
         }
 
         $pin = (string) ($input['pin'] ?? '');
-        $hash = $settings->get('lock_pin_hash');
+        // Admin -> globale Settings-PIN, Player-Rolle -> eigene, nur in der
+        // Session hinterlegte PIN (siehe set_pin oben).
+        $hash = Auth::isAdmin() ? $settings->get('lock_pin_hash') : ($_SESSION['player_lock_pin_hash'] ?? null);
 
         if ($hash === null) {
             json_fail(400, 'Es ist keine PIN eingerichtet.');
