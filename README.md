@@ -13,6 +13,7 @@
   <img src="https://img.shields.io/badge/dependencies-zero-brightgreen" alt="Zero Dependencies">
   <img src="https://img.shields.io/badge/hosting-shared%20hosting%20ready-blue" alt="Shared Hosting Ready">
   <img src="https://img.shields.io/badge/status-beta-orange" alt="Status: Beta">
+  <img src="https://img.shields.io/badge/license-AGPL--3.0-blue" alt="License: AGPL-3.0">
 </p>
 
 ---
@@ -145,3 +146,7 @@ aktualisiert sich live per Server-Sent Events, ganz ohne Bedienung.
 ├── src/                   PHP-Klassen (Datenbank, Auth, Scanner, Metadaten, QR-Code, ...)
 └── templates/             Header/Footer-Partials fuer Admin- und Gaeste-Seiten
 ```
+
+## Lizenz
+
+Party Player steht unter der [GNU Affero General Public License v3.0](LICENSE). Kurz gesagt: frei nutzbar, veränderbar und weitergebbar - wer eine veränderte Version öffentlich (auch nur als gehosteten Dienst für Gäste) betreibt, muss den dazugehörigen Quellcode ebenfalls zur Verfügung stellen.
