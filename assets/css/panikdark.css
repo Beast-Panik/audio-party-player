@@ -62,6 +62,9 @@
   --pnk-selected-bg-unfocused:  #283b4d;  /* ausgewaehlt, aber nicht fokussiert */
   --pnk-hover-bg:               #283643;  /* Listenelement: hover */
   --pnk-focus-ring:             #0c64b1;  /* Fokus-Outline */
+  --pnk-raised-hover-bg:        #3a4045;  /* Hover auf erhabenen Flaechen (Buttons, Tabellenkopf) */
+  --pnk-search-hover-bg:        #34393d;  /* Hover auf Such-/Filterfeldern */
+  --pnk-disabled-bg:            rgba(36, 40, 43, 0.67);  /* deaktivierte Checkbox/Radio */
 
   /* Schatten (dunkler Grund -> subtil) */
   --pnk-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.4);
@@ -135,6 +138,9 @@
     --pnk-selected-bg-unfocused:  #e7eef6;
     --pnk-hover-bg:               #eef2f6;
     --pnk-focus-ring:             #0c64b1;
+    --pnk-raised-hover-bg:        #d8dee5;
+    --pnk-search-hover-bg:        #e2e6eb;
+    --pnk-disabled-bg:            rgba(210, 216, 222, 0.55);
 
     --pnk-shadow-sm: 0 1px 2px rgba(20, 30, 45, 0.08);
     --pnk-shadow:    0 6px 20px rgba(20, 30, 45, 0.12);
@@ -185,6 +191,9 @@
   --pnk-selected-bg-unfocused:  #e7eef6;
   --pnk-hover-bg:               #eef2f6;
   --pnk-focus-ring:             #0c64b1;
+  --pnk-raised-hover-bg:        #d8dee5;
+  --pnk-search-hover-bg:        #e2e6eb;
+  --pnk-disabled-bg:            rgba(210, 216, 222, 0.55);
 
   --pnk-shadow-sm: 0 1px 2px rgba(20, 30, 45, 0.08);
   --pnk-shadow:    0 6px 20px rgba(20, 30, 45, 0.12);
@@ -347,7 +356,7 @@
   cursor: pointer;
   transition: background-color var(--pnk-transition), color var(--pnk-transition), opacity var(--pnk-transition);
 }
-.pnk-btn:hover { background: #3a4045; }
+.pnk-btn:hover { background: var(--pnk-raised-hover-bg); }
 .pnk-btn:focus-visible { outline: 2px solid var(--pnk-focus-ring); outline-offset: 2px; }
 .pnk-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
@@ -416,7 +425,6 @@
 .pnk-select:focus {
   outline: none;
   border-color: var(--pnk-focus-ring);
-  background: #000;
 }
 
 .pnk-textarea { resize: vertical; min-height: 6em; }
@@ -425,7 +433,7 @@
   background: var(--pnk-input-bg-alt);
   border: 1px solid transparent;
 }
-.pnk-search:hover { background: #34393d; }
+.pnk-search:hover { background: var(--pnk-search-hover-bg); }
 .pnk-search:focus { border-color: var(--pnk-focus-ring); background: var(--pnk-input-bg); }
 
 /* Checkbox / Radio */
@@ -469,7 +477,7 @@
 }
 
 .pnk-checkbox:disabled, .pnk-radio:disabled {
-  background: rgba(36, 40, 43, 0.67);
+  background: var(--pnk-disabled-bg);
   border-color: rgba(183, 192, 196, 0.37);
   cursor: not-allowed;
 }
@@ -579,7 +587,7 @@
   font-weight: 600;
   border-bottom: 1px solid var(--pnk-border-table);
 }
-.pnk-table th:hover { background: #40464d; }
+.pnk-table th:hover { background: var(--pnk-raised-hover-bg); }
 .pnk-table td {
   padding: 8px 12px;
   border-bottom: 1px solid var(--pnk-border);
